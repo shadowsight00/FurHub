@@ -44,6 +44,9 @@ jobs:
           gradle-version: '8.9'
       - name: Test, lint and build prepared source
         run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace
+      - name: Check public API connectivity
+        run: |
+          if [ -f docs/check_public_apis.py ]; then python3 docs/check_public_apis.py; fi
       - name: Commit validated source
         run: |
           git config user.name "github-actions[bot]"
@@ -65,4 +68,5 @@ jobs:
           path: |
             app/build/reports/tests/
             app/build/reports/lint-results-debug.*
+            app/build/reports/api-connectivity.json
           if-no-files-found: ignore
