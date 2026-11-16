@@ -1,0 +1,68 @@
+name: Validate and import Android source
+on:
+  push:
+    branches: [main]
+    paths: [unifiedart-source.zip]
+permissions:
+  contents: write
+concurrency:
+  group: unifiedart-source-import
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Expand prepared source safely
+        run: |
+          python3 - <<'PY'
+          from pathlib import PurePosixPath
+          from zipfile import ZipFile
+          allowed = {'app', 'docs', 'README.md', '.gitignore', 'build.gradle.kts', 'settings.gradle.kts', 'gradle.properties'}
+          with ZipFile('unifiedart-source.zip') as archive:
+              entries = archive.infolist()
+              assert len(entries) <= 1000 and sum(e.file_size for e in entries) < 64 * 1024 * 1024
+              for entry in entries:
+                  path = PurePosixPath(entry.filename)
+                  assert not path.is_absolute() and '..' not in path.parts and path.parts[0] in allowed
+                  assert not any(part in {'.git', '.github', '.gradle', 'build'} for part in path.parts)
+                  assert (entry.external_attr >> 16) & 0o170000 != 0o120000
+              archive.extractall('.')
+          PY
+          rm unifiedart-source.zip
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Test, lint and build prepared source
+        run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace
+      - name: Commit validated source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app docs README.md .gitignore build.gradle.kts settings.gradle.kts gradle.properties unifiedart-source.zip
+          git commit -m "Import validated native Android source update"
+          git push
+          echo "Built source commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UnifiedArt-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: UnifiedArt-check-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.*
+          if-no-files-found: ignore
