@@ -30,17 +30,26 @@ fun timestamp(value: String): Long {
     catch (_: Exception) { 0L }
 }
 
-class E621Source(private val api: ApiClient = ApiClient(650)) : ArtSource {
+class E621Source(private val api: ApiClient = ApiClients.e621, private val accounts: Accounts? = null) : ArtSource {
     override val source = Source.E621
     override suspend fun search(query: SearchQuery, page: Int, resultId: String?): Page {
-        val url = "https://e621.net/posts.json".toHttpUrl().newBuilder()
+        if (query.mode == GalleryMode.FAVORITES && accounts?.eId.isNullOrBlank()) return Page(emptyList(), false)
+        val endpoint = if (query.mode == GalleryMode.FAVORITES) "https://e621.net/favorites.json" else "https://e621.net/posts.json"
+        val url = endpoint.toHttpUrl().newBuilder().apply {
+            if (query.mode == GalleryMode.FAVORITES) addQueryParameter("user_id", accounts?.eId)
+        }
             .addQueryParameter("tags", query.e621).addQueryParameter("limit", "40")
             .addQueryParameter("page", page.toString()).build()
-        val response = api.json(url.toString())
+        val response = api.json(url.toString(), headers = accounts?.eHeaders().orEmpty())
         val posts = response.optJSONArray("posts") ?: throw IOException("e621 returned an unexpected response")
-        return Page(posts.objects().map(::parse), posts.length() >= 40)
+        return Page(posts.objects().map(::parse).map { it.copy(blocked = blacklisted(it, accounts?.eBlacklist.orEmpty())) }, posts.length() >= 40)
     }
-    override suspend fun details(art: Artwork): Artwork = art
+    override suspend fun details(art: Artwork): Artwork = art.copy(blocked = blacklisted(art, accounts?.eBlacklist.orEmpty()))
+    suspend fun favorite(art: Artwork, desired: Boolean) {
+        check(!accounts?.eId.isNullOrBlank()) { "Connect an e621 account in Settings first" }
+        if (desired) api.json("https://e621.net/favorites.json", mapOf("post_id" to art.id), accounts?.eHeaders().orEmpty())
+        else api.json("https://e621.net/favorites/${art.id}.json", headers = accounts?.eHeaders().orEmpty(), method = "DELETE")
+    }
 
     internal fun parse(post: JSONObject): Artwork {
         val file = post.optJSONObject("file") ?: JSONObject()
@@ -51,16 +60,23 @@ class E621Source(private val api: ApiClient = ApiClient(650)) : ArtSource {
             timestamp(post.optString("created_at")), post.optJSONObject("preview")?.https("url") ?: "",
             file.https("url").takeIf { it.isNotEmpty() }?.let {
                 listOf(MediaFile(it, file.optString("ext"), file.optInt("width"), file.optInt("height")))
-            } ?: emptyList(), favorite = post.optBoolean("is_favorited"), pools = post.optJSONArray("pools").strings())
+            } ?: emptyList(), favorite = post.optBoolean("is_favorited"), pools = post.optJSONArray("pools").strings(),
+            filterFields = mapOf("id" to id, "rating" to post.optString("rating"), "type" to file.optString("ext"),
+                "width" to file.optString("width"), "height" to file.optString("height"), "filesize" to file.optString("size"),
+                "score" to (post.optJSONObject("score")?.optString("total") ?: "0"), "favcount" to post.optString("fav_count"),
+                "userid" to post.optString("uploader_id"), "uploader" to post.optString("uploader_name"),
+                "tagcount" to tags.keys().asSequence().sumOf { tags.optJSONArray(it)?.length() ?: 0 }.toString(),
+                "status" to (post.optJSONObject("flags")?.let { flags -> flags.keys().asSequence().filter { flags.optBoolean(it) }.joinToString(" ") } ?: "")))
     }
 }
 
-class InkbunnySource(private val api: ApiClient = ApiClient(1100)) : ArtSource {
+class InkbunnySource(private val api: ApiClient = ApiClients.inkbunny, private val accounts: Accounts? = null) : ArtSource {
     override val source = Source.INKBUNNY
     private var sid: String? = null
     private val sessionLock = Mutex()
 
     private suspend fun session(): String = sessionLock.withLock {
+        accounts?.inkSid?.takeIf { it.isNotBlank() }?.let { return@withLock it }
         sid ?: run {
             val result = api.json("https://inkbunny.net/api_login.php", mapOf("username" to "guest"))
             checkError(result)
@@ -83,6 +99,7 @@ class InkbunnySource(private val api: ApiClient = ApiClient(1100)) : ArtSource {
             val sessionId = session()
             val result = api.json("https://inkbunny.net/$endpoint", params + ("sid" to sessionId))
             if (result.has("error_code") && result.optInt("error_code") == 2 && attempt == 0) {
+                if (!accounts?.inkSid.isNullOrBlank()) throw IOException("Inkbunny session expired. Reconnect in Settings.")
                 sessionLock.withLock { if (sid == sessionId) sid = null }
             } else { checkError(result); return result }
         }
@@ -90,11 +107,13 @@ class InkbunnySource(private val api: ApiClient = ApiClient(1100)) : ArtSource {
     }
 
     override suspend fun search(query: SearchQuery, page: Int, resultId: String?): Page {
+        if (query.mode == GalleryMode.FAVORITES && accounts?.inkId.isNullOrBlank()) return Page(emptyList(), false)
         val params = mutableMapOf("page" to page.toString(), "submissions_per_page" to "40")
         if (resultId != null) params["rid"] = resultId
         else {
             params += mapOf("text" to query.inkbunny, "orderby" to "create_datetime", "get_rid" to "yes", "keywords" to "yes")
             if (query.inkArtist.isNotBlank()) params["username"] = query.inkArtist
+            if (query.mode == GalleryMode.FAVORITES) params["favs_user_id"] = accounts!!.inkId
         }
         val result = request("api_search.php", params)
         val posts = result.optJSONArray("submissions") ?: throw IOException("Inkbunny returned an unexpected response")

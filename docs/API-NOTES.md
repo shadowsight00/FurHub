@@ -35,3 +35,11 @@ Verify current official mechanisms for favorites mutations, account-blacklist re
 ## Validation boundary
 
 The included tests exercise data normalization, source identity, timezone conversion, hidden flags and multi-page ordering using synthetic metadata. No authenticated account, live API response, physical device or release-signing behavior has been validated yet. GitHub Actions has not run until repository access is available.
+
+## Phase 2 additions
+
+Reviewed official e621 server controllers for Users and Favorites and the client blacklist Filter/FilterToken/FilterUtilities implementations in the e621ng/e621ng repository. Account verification requires the self-only `blacklisted_tags` field from GET `/users/:name.json` with HTTP Basic username/API-key authorization. GET `/favorites.json?user_id=...` reads account favorites; POST `/favorites.json` with `post_id` adds a favorite; DELETE `/favorites/:id.json` removes it. Read-only requests and account operations share one source-specific rate limiter.
+
+The Inkbunny documented `favs_user_id` search filter reads favorites. Registered sessions reuse SID without the guest-rating mutation. Invalid registered sessions report reconnect instead of falling back to guest. Registered logout calls the official logout endpoint and removes the encrypted local connection. Full account-block preference export and favorite mutations were not found in the reviewed API documentation; these are not claimed as supported.
+
+The e621 blacklist matcher handles AND lines, optional OR tokens, negation, comments, wildcard tags, rating/type/status, uploader IDs/names, pools, favorites and documented numeric comparisons/ranges. It only evaluates user-supplied account rules; no app-owned rating blacklist is installed.

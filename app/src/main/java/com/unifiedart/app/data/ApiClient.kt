@@ -30,13 +30,16 @@ class ApiClient(private val spacingMillis: Long) {
     private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS).callTimeout(40, TimeUnit.SECONDS).build()
 
-    suspend fun json(url: String, form: Map<String, String>? = null): JSONObject = mutex.withLock {
+    suspend fun json(url: String, form: Map<String, String>? = null,
+        headers: Map<String, String> = emptyMap(), method: String = if (form == null) "GET" else "POST"): JSONObject = mutex.withLock {
         var failure: IOException? = null
         for (attempt in 0..2) {
             delay((spacingMillis - (System.nanoTime() / 1_000_000 - lastStart)).coerceAtLeast(0))
             lastStart = System.nanoTime() / 1_000_000
             val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).apply {
-                if (form != null) post(FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build())
+                headers.forEach { (key, value) -> header(key, value) }
+                if (method == "DELETE") delete()
+                else if (form != null) post(FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build())
             }.build()
             var retryAfter = 0L
             try {
@@ -75,3 +78,5 @@ private suspend fun Call.await(): Response = suspendCancellableCoroutine { conti
         }
     })
 }
+
+object ApiClients { val e621 = ApiClient(650); val inkbunny = ApiClient(1100) }

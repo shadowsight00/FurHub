@@ -21,6 +21,17 @@ class ArtworkTest {
         assertEquals(expected, timestamp("2026-11-16 10:00:00-05"))
     }
 
+    @Test fun accountBlacklistRespectsAndOrNegationAndRatings() {
+        val post = art(Source.E621, "7", 10).copy(tags = listOf("wolf", "blue_eyes"), filterFields = mapOf("rating" to "e", "score" to "15"))
+        assertTrue(blacklisted(post, "wolf -red_eyes"))
+        assertFalse(blacklisted(post, "wolf -blue_eyes"))
+        assertTrue(blacklisted(post, "wolf ~green_eyes ~blue_eyes"))
+        assertTrue(blacklisted(post, "rating:explicit score:10..20"))
+        assertTrue(blacklisted(post, "blue_* # user comment"))
+        assertFalse(blacklisted(post, "# disabled rule\ncat"))
+        assertFalse(blacklisted(post.copy(source = Source.INKBUNNY), "wolf"))
+    }
+
     @Test fun e621NullMediaNeverBecomesALiteralNullUrl() {
         val art = E621Source().parse(JSONObject("""{"id":8,"file":{"url":null},"preview":{"url":null},"tags":{"artist":["example"]},"pools":[1,2]}"""))
         assertTrue(art.files.isEmpty())

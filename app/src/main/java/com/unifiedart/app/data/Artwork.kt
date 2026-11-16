@@ -15,7 +15,7 @@ data class Artwork(
     val tags: List<String>, val uploadedAt: Long, val thumbnail: String,
     val files: List<MediaFile> = emptyList(), val pageCount: Int = 1,
     val favorite: Boolean = false, val pools: List<String> = emptyList(),
-    val blocked: Boolean = false
+    val blocked: Boolean = false, val filterFields: Map<String, String> = emptyMap()
 ) {
     val key get() = "${source.name}:$id"
     val submissionUrl get() = when (source) {
@@ -24,7 +24,8 @@ data class Artwork(
     }
 }
 
-data class SearchQuery(val e621: String = "", val inkbunny: String = "", val inkArtist: String = "")
+enum class GalleryMode { EXPLORE, FAVORITES }
+data class SearchQuery(val e621: String = "", val inkbunny: String = "", val inkArtist: String = "", val mode: GalleryMode = GalleryMode.EXPLORE)
 data class Page(val items: List<Artwork>, val more: Boolean, val resultId: String? = null)
 
 fun mergeArtwork(old: List<Artwork>, new: List<Artwork>): List<Artwork> =

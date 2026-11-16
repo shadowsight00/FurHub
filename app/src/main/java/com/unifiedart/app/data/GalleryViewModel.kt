@@ -1,6 +1,7 @@
 package com.unifiedart.app.data
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -18,8 +19,10 @@ data class GalleryState(val query: SearchQuery = SearchQuery(), val items: List<
 }
 
 /** Each source publishes as soon as it finishes. Failure never discards the other source's results. */
-class GalleryViewModel : ViewModel() {
-    private val adapters: Map<Source, ArtSource> = listOf(E621Source(), InkbunnySource()).associateBy { it.source }
+class GalleryViewModel(application: Application) : AndroidViewModel(application) {
+    val accounts = Accounts.get(application)
+    private val e621 = E621Source(accounts = accounts)
+    private val adapters: Map<Source, ArtSource> = listOf(e621, InkbunnySource(accounts = accounts)).associateBy { it.source }
     private val mutable = MutableStateFlow(GalleryState())
     val state = mutable.asStateFlow()
     private var job: Job? = null
@@ -70,4 +73,13 @@ class GalleryViewModel : ViewModel() {
         }
     }
     suspend fun details(art: Artwork): Artwork = adapters.getValue(art.source).details(art)
+    suspend fun favorite(art: Artwork, desired: Boolean) {
+        if (art.source == Source.INKBUNNY) throw IllegalStateException("Inkbunny's documented API supports reading favorites, but doesn't document adding/removing them. Local bookmarks are planned separately.")
+        mutable.update { s -> s.copy(items = s.items.map { if (it.key == art.key) it.copy(favorite = desired) else it }) }
+        try { e621.favorite(art, desired) }
+        catch (error: Exception) {
+            mutable.update { s -> s.copy(items = s.items.map { if (it.key == art.key) it.copy(favorite = art.favorite) else it }) }
+            throw error
+        }
+    }
 }

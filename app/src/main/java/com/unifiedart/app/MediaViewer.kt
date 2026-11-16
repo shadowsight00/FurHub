@@ -38,6 +38,7 @@ import coil.decode.ImageDecoderDecoder
 import coil.decode.GifDecoder
 import com.unifiedart.app.data.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -61,6 +62,8 @@ fun MediaViewer(items: List<Artwork>, initial: Int, model: GalleryViewModel, onC
                     var retry by remember(original.key) { mutableIntStateOf(0) }
                     var fileIndex by remember(original.key) { mutableIntStateOf(0) }
                     var info by remember(original.key) { mutableStateOf(false) }
+                    var actionBusy by remember(original.key) { mutableStateOf(false) }
+                    val scope = rememberCoroutineScope()
                     LaunchedEffect(original.key, retry) {
                         loading = true; error = null
                         try { art = model.details(original) }
@@ -92,6 +95,19 @@ fun MediaViewer(items: List<Artwork>, initial: Int, model: GalleryViewModel, onC
                             Text("${fileIndex + 1}/${art.files.size}")
                             TextButton(onClick = { fileIndex++ }, enabled = fileIndex < art.files.lastIndex) { Text("Next page") }
                         }
+                        TextButton(onClick = {
+                            if (!actionBusy) {
+                                val before = art
+                                val desired = !art.favorite
+                                art = art.copy(favorite = desired); actionBusy = true; error = null
+                                scope.launch {
+                                    try { model.favorite(before, desired) }
+                                    catch (cancel: CancellationException) { throw cancel }
+                                    catch (failure: Exception) { art = before; error = failure.message ?: "Favorite couldn't sync. Refresh to retry." }
+                                    finally { actionBusy = false }
+                                }
+                            }
+                        }, enabled = !actionBusy) { Text(if (art.favorite) "★ Favorited" else "☆ Favorite") }
                         TextButton(onClick = { info = !info }, modifier = Modifier.fillMaxWidth()) { Text(if (info) "Hide details" else "Artists, tags & details") }
                         if (info) Column(Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()).padding(12.dp)) {
                             Text("${art.source.label} #${art.id}", style = MaterialTheme.typography.labelLarge)
@@ -151,12 +167,13 @@ private fun ZoomImage(art: Artwork, url: String) {
 @Composable
 private fun Video(url: String, source: Source, active: Boolean) {
     val context = LocalContext.current
+    val mediaUrl = Accounts.get(context).mediaUrl(url)
     val owner = LocalLifecycleOwner.current
-    val player = remember(url) {
+    val player = remember(mediaUrl) {
         val http = DefaultHttpDataSource.Factory().setUserAgent(USER_AGENT).setDefaultRequestProperties(
             if (source == Source.INKBUNNY) mapOf("Referer" to "https://inkbunny.net") else emptyMap())
         ExoPlayer.Builder(context).setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(http)).build().apply {
-            setMediaItem(MediaItem.fromUri(url)); prepare()
+            setMediaItem(MediaItem.fromUri(mediaUrl)); prepare()
         }
     }
     var failed by remember(url) { mutableStateOf(false) }

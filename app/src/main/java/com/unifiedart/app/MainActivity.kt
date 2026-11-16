@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
 }
 
 fun imageRequest(context: android.content.Context, art: Artwork, url: String) = ImageRequest.Builder(context)
-    .data(url).addHeader("User-Agent", USER_AGENT)
+    .data(Accounts.get(context).mediaUrl(url)).memoryCacheKey(art.key + ":" + url).diskCacheKey(art.key + ":" + url).addHeader("User-Agent", USER_AGENT)
     .apply { if (art.source == Source.INKBUNNY) addHeader("Referer", "https://inkbunny.net") }
     .crossfade(true).build()
 
@@ -56,6 +56,7 @@ private fun Gallery(model: GalleryViewModel = viewModel()) {
     var expanded by rememberSaveable { mutableStateOf(true) }
     var columns by rememberSaveable { mutableIntStateOf(3) }
     var settings by remember { mutableStateOf(false) }
+    var accountSettings by remember { mutableStateOf(false) }
     var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
     val grid = rememberLazyGridState()
     val selected = state.items.indexOfFirst { it.key == selectedKey }
@@ -84,7 +85,13 @@ private fun Gallery(model: GalleryViewModel = viewModel()) {
             TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Hide search" else "Search") }
             TextButton(onClick = { settings = true }) { Text("Grid") }
         }
-        if (expanded) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(onClick = { model.search(SearchQuery(eTags, iTags)) }) { Text("Explore") }
+            TextButton(onClick = { model.search(SearchQuery(mode = GalleryMode.FAVORITES)) }) { Text("Favorites") }
+            TextButton(onClick = { accountSettings = true }) { Text("Accounts") }
+        }
+        if (state.query.mode == GalleryMode.FAVORITES) Text("Account favorites · both sources", style = MaterialTheme.typography.titleSmall)
+        if (expanded && state.query.mode == GalleryMode.EXPLORE) {
             OutlinedTextField(eTags, { eTags = it }, label = { Text("e621 tags & syntax") },
                 singleLine = true, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { submit() }))
@@ -152,8 +159,9 @@ private fun Gallery(model: GalleryViewModel = viewModel()) {
         text = { Column {
             Text("$columns columns")
             Slider(columns.toFloat(), { columns = it.toInt() }, valueRange = 2f..6f, steps = 3)
-            Text("Phase 1 · Public browsing\nAccount connections, favorites, following, downloads and collections are planned next.", style = MaterialTheme.typography.bodySmall)
+            Text("Phase 2 · Account connections & merged favorites\nFollowing, downloads and collections are planned next.", style = MaterialTheme.typography.bodySmall)
         } }, confirmButton = { TextButton(onClick = { settings = false }) { Text("Done") } })
+    if (accountSettings) AccountSettings(model) { accountSettings = false }
     if (selected >= 0) MediaViewer(state.items, selected, model, onClose = { selectedKey = null }, onArtist = { art, artist ->
         selectedKey = null
         if (art.source == Source.E621) { eTags = artist; iTags = ""; model.search(SearchQuery(e621 = artist, inkbunny = artist)) }
