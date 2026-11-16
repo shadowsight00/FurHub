@@ -1,0 +1,50 @@
+name: Build signed release APK
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UNIFIEDART_KEYSTORE_PATH: ${{ runner.temp }}/unifiedart-release.jks
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      UNIFIEDART_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      UNIFIEDART_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      UNIFIEDART_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify signing configuration
+        run: |
+          for name in KEYSTORE_BASE64 UNIFIEDART_KEYSTORE_PASSWORD UNIFIEDART_KEY_ALIAS UNIFIEDART_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "Missing signing secret. Configure the four ANDROID_KEYSTORE/KEY secrets listed in docs/RELEASE-SIGNING.md."
+              exit 1
+            fi
+          done
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$UNIFIEDART_KEYSTORE_PATH"
+          chmod 600 "$UNIFIEDART_KEYSTORE_PATH"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Test, lint and sign release
+        run: gradle :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease --no-daemon --stacktrace
+      - name: Verify APK signature
+        run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UnifiedArt-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+      - name: Remove temporary signing file
+        if: always()
+        run: rm -f "$UNIFIEDART_KEYSTORE_PATH"
