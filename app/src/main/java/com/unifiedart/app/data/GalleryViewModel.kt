@@ -169,6 +169,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     suspend fun details(art: Artwork): Artwork {
         val detail = adapters.getValue(art.source).details(art)
         local.markViewed(art.key)
+        mutable.update { state -> state.copy(items = state.items.map { if (it.key == detail.key) detail else it }) }
         return detail
     }
     fun toggleArtist(artist: String) {

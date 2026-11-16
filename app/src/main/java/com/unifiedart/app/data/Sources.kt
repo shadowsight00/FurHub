@@ -152,7 +152,7 @@ class InkbunnySource(private val api: ApiClient = ApiClients.inkbunny, private v
         }
         val result = request("api_search.php", params)
         val posts = result.optJSONArray("submissions") ?: throw IOException("Inkbunny returned an unexpected response")
-        return Page(posts.objects().map(::parse), page < result.optInt("pages_count", page),
+        return Page(posts.objects().map(::parse).map { if (query.mode == GalleryMode.FAVORITES) it.copy(favorite = true) else it }, page < result.optInt("pages_count", page),
             result.optString("rid").takeIf { it.isNotBlank() && it != "null" } ?: resultId)
     }
 
