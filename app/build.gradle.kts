@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.kapt")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
@@ -10,14 +11,30 @@ android {
         applicationId = "com.unifiedart.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 4
+        versionName = "0.4.0"
+    }
+    val signingPath = System.getenv("UNIFIEDART_KEYSTORE_PATH")
+    if (!signingPath.isNullOrBlank()) {
+        signingConfigs.create("secureRelease") {
+            storeFile = file(signingPath)
+            storePassword = System.getenv("UNIFIEDART_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("UNIFIEDART_KEY_ALIAS")
+            keyPassword = System.getenv("UNIFIEDART_KEY_PASSWORD")
+        }
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("secureRelease")
     }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
+kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }
 dependencies {
+    implementation("androidx.room:room-runtime:2.7.2")
+    implementation("androidx.room:room-ktx:2.7.2")
+    kapt("androidx.room:room-compiler:2.7.2")
+    implementation("androidx.work:work-runtime-ktx:2.10.5")
+    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")

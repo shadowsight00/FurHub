@@ -15,7 +15,7 @@ data class Artwork(
     val tags: List<String>, val uploadedAt: Long, val thumbnail: String,
     val files: List<MediaFile> = emptyList(), val pageCount: Int = 1,
     val favorite: Boolean = false, val pools: List<String> = emptyList(),
-    val blocked: Boolean = false, val filterFields: Map<String, String> = emptyMap()
+    val blocked: Boolean = false, val previewMedia: MediaFile? = null, val format: String = "", val filterFields: Map<String, String> = emptyMap(), val needsVerification: Boolean = false
 ) {
     val key get() = "${source.name}:$id"
     val submissionUrl get() = when (source) {
@@ -24,9 +24,9 @@ data class Artwork(
     }
 }
 
-enum class GalleryMode { EXPLORE, FAVORITES }
-data class SearchQuery(val e621: String = "", val inkbunny: String = "", val inkArtist: String = "", val mode: GalleryMode = GalleryMode.EXPLORE)
+enum class GalleryMode { EXPLORE, FAVORITES, FOLLOWING, LOCAL }
+data class SearchQuery(val e621: String = "", val inkbunny: String = "", val inkArtist: String = "", val mode: GalleryMode = GalleryMode.EXPLORE, val enabled: Set<Source> = Source.entries.toSet())
 data class Page(val items: List<Artwork>, val more: Boolean, val resultId: String? = null)
 
 fun mergeArtwork(old: List<Artwork>, new: List<Artwork>): List<Artwork> =
-    (old + new).distinctBy { it.key }.sortedWith(compareByDescending<Artwork> { it.uploadedAt }.thenBy { it.key })
+    (old + new).associateBy { it.key }.values.sortedWith(compareByDescending<Artwork> { it.uploadedAt }.thenBy { it.key })

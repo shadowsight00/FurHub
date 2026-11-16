@@ -1,38 +1,38 @@
 # UnifiedArt
 
-Native Kotlin / Jetpack Compose Android art browser merging e621 and Inkbunny into one gallery.
+Native Kotlin / Compose Android art library combining e621 and Inkbunny. Artwork and artist/tag/pool browsing stay in the app; no website redirects.
 
-## Current implementation (Phase 2 candidate)
+## Build checkpoints
 
-- Independent e621 tag and Inkbunny keyword fields, combined timestamp-sorted results.
-- Concurrent sources publish independently, with individual pagination, error state and retry.
-- Infinite scrolling, explicit load-more fallback, refresh, cancellation, bounded retry and per-source request spacing.
-- Source-prefixed stable IDs; artist, tags, timestamp, original media, dimensions, page count, favorite and pool metadata.
-- Native full-screen viewer; no website redirects or browser intents.
-- Cross-source swipe navigation, pinch/double-tap zoom, panning, GIF and Media3 video viewing.
-- Inkbunny original-file detail resolution and ordered multi-page navigation.
-- Artist/tag/pool actions run searches inside the app.
-- Adjustable grid columns, dark UI, loading/empty/error states, Coil thumbnail cache, recent query recall.
-- GitHub Actions installs Java 17, Android SDK and Gradle 8.9; runs JVM tests, lint and debug assembly; uploads APK and check reports.
+- Phase 1 passed cloud build, tests, lint and debug APK assembly: https://github.com/shadowsight00/UnifiedArt/actions/runs/43953549116
+- Phase 2 secure accounts/favorites passed cloud checks: https://github.com/shadowsight00/UnifiedArt/actions/runs/43955152082
+- Current 0.4 candidate includes the following/media/download/collections work below. Local compilation, eight JVM tests and lint pass. Consult the latest successful source-import workflow for its cloud artifact; do not confuse earlier checkpoint APKs with this version.
 
-Phase 1 passed GitHub Actions compilation, JVM tests, lint and APK assembly: https://github.com/shadowsight00/UnifiedArt/actions/runs/43953549116
+## Implemented candidate features
 
-Phase 2 adds Keystore-encrypted e621 API-key and Inkbunny SID connections, verification, disconnect/account switching, merged account favorites, optimistic e621 favorite editing with rollback, source blacklist synchronization and native account settings. Account passwords are not persisted. Local build checks pass; authenticated account flows still require real-device/account validation. Inkbunny favorite editing and full preference export are not documented by its public API and are explicitly identified as unavailable in the UI.
+- Two independent source search fields, live tag suggestions, paired search history and saved searches.
+- One merged chronological grid with independent source pagination, refresh, cancellation, source errors and retry. Source-prefixed stable keys, lazy cached thumbnails with prefetching, adjustable persisted columns and chronological order.
+- Native full-resolution image viewer with pan/pinch/double-tap zoom, cross-source swipe, GIF and Media3 video, metadata/tags/artists/pools, and ordered Inkbunny file navigation.
+- Silent visible-only optimized video previews where a site provides preview variants; actual animated GIF thumbnails are supported. At most two previews run, pause on background and release offscreen. Autoplay defaults on; off/Wi-Fi-only/reduced-data controls persist. Full originals are never fetched to fill gallery thumbnails.
+- Keystore AES-GCM credential vault, verified e621 API-key login, Inkbunny SID login, persistent connections, disconnect/account switching. Passwords are not retained. Registered Inkbunny settings are preserved; expired registered sessions require reconnect, never silent guest downgrade.
+- Unified account favorites with optimistic e621 favorite editing and rollback. Inkbunny favorites are read-only because adding/removing them is not documented by its API; local bookmarks remain available.
+- e621 account blacklist refresh and matching, plus source-side Inkbunny hidden flags. No app-added rating blacklist. Guest Inkbunny ratings use the official guest selection endpoint; private/guest-blocked content remains restricted.
+- One Following gallery combining app-followed e621 artists with Inkbunny unread watched submissions. Viewed submissions are tracked locally; feed loading never clears the native unread list. e621 updates are scheduled about every four hours under Android network/battery constraints, with cached metadata. Inkbunny watchlist refresh and local favorite artists are available in Collections.
+- Room stores mixed-source bookmarks/custom collections, paired saved searches, favorite artists, saved pool references, download history and cached following metadata.
+- Original and selected-batch downloads run through WorkManager, with foreground notifications, progress, cancel/retry and collision-safe names. Choose an Android storage folder in Downloads; no broad storage permission is requested.
+- e621 pool ZIP downloads use the complete ordered post-ID list. Each original is fully staged before entering the archive; a manifest records ordering, original filenames and missing/failed posts. Partial results are labeled **Completed with skips**. Cancellation removes partial output; storage-revocation cleanup failures are reported.
+- All six primary sections: Explore, Favorites, Following, Collections, Downloads, Settings. Dark theme and adaptive app icon.
 
-## Phone-only installation after a successful build
+## Install using only your phone
 
-Open this repository's **Actions** tab, open the successful **Build Android APK** run, then download **UnifiedArt-debug-apk** from Artifacts. Extract the ZIP on Android and open `app-debug.apk`. Android may ask to allow installation from the app used to open it. There is no computer, Android Studio, terminal, or individual-file upload step.
+Open the latest successful Actions run, download **UnifiedArt-debug-apk**, extract the ZIP and open `app-debug.apk`. Allow installation from the app used to open the APK if Android requests it. No computer, terminal, Android Studio or source-file uploads are required.
 
-## Access behavior
+## Validation and current limits
 
-The app imposes no adult-rating exclusions. e621 uses public access or authenticated requests when connected. Inkbunny uses its documented guest-session login and rating-selection endpoint, enabling the supported guest ratings; guest-blocked/private submissions remain inaccessible. Registered Inkbunny sessions preserve the account settings returned at login. Session expiry requires reconnecting; the app never silently substitutes a guest session for an expired registered connection. Source-side `hidden` flags are respected.
+Compilation and synthetic tests do not prove live account/device behavior. Login, storage-provider access, background execution, media compatibility, large-image memory behavior and performance require physical-device testing. A public API connectivity report is included in cloud check reports when available; a cloud runner's connectivity does not prove a phone's connectivity.
 
-A source can be unreachable independently. A successful compile does not prove that either API is reachable on a particular network.
+Inkbunny's documented API does not expose favorite mutations, full blocking-preference export, or native unread-state clearing. These are explicitly not invented or claimed. Its session settings and hidden flags are respected; reconnect after changing account preferences.
 
-## Next milestones
+These are debug builds. Release signing must be configured with owner-controlled GitHub Actions secrets before the manual signed-release workflow can run. No signing keys or account credentials belong in the repository. Android Keystore-backed account storage is app/device local and excluded from backup.
 
-See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for the complete planned feature scope and [docs/API-NOTES.md](docs/API-NOTES.md) for reviewed API contracts and limitations. Animated gallery thumbnails, a followed-artists feed, background downloads and Room collections are not implemented yet. No placeholder tabs claim these features exist.
-
-## Development
-
-SDK 35, minimum Android 8 (API 26), AGP 8.7.3, Kotlin 2.0.21, Compose BOM 2024.12.01. CI uses a pinned Gradle installation rather than an absent wrapper. All dependencies come from Google Maven / Maven Central. No credentials, passwords, signing keys or backend are required for public browsing. Credentials are entered only inside the installed app and are never supplied to cloud builds.
+See [requirements](docs/REQUIREMENTS.md), [API notes](docs/API-NOTES.md), and [release signing](docs/RELEASE-SIGNING.md).

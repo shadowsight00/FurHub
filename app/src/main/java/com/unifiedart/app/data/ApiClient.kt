@@ -14,12 +14,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONObject
+import org.json.JSONArray
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-const val USER_AGENT = "UnifiedArt/0.2 (Android; https://github.com/shadowsight00/UnifiedArt)"
+const val USER_AGENT = "UnifiedArt/0.4 (Android; https://github.com/shadowsight00/UnifiedArt)"
 
 class ApiException(val code: Int, message: String) : IOException(message)
 
@@ -50,7 +51,8 @@ class ApiClient(private val spacingMillis: Long) {
                             retryAfter = it.header("Retry-After")?.toLongOrNull()?.times(1000) ?: 0
                             throw ApiException(it.code, "Request failed (HTTP ${it.code})")
                         }
-                        JSONObject(it.body?.string() ?: throw IOException("Empty response"))
+                        val text = it.body?.string() ?: throw IOException("Empty response")
+                        if (text.trimStart().startsWith("[")) JSONObject().put("items", JSONArray(text)) else JSONObject(text)
                     }
                 }
                 return@withLock result

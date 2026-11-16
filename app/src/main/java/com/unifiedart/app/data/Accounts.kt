@@ -109,11 +109,7 @@ class Accounts private constructor(context: Context) {
             data = JSONObject(data.toString()).apply { keys.forEach { remove(it) } }; save()
         }
     }
-    fun mediaUrl(raw: String): String {
-        val url = runCatching { raw.toHttpUrl() }.getOrNull() ?: return raw
-        return if (url.host == "inkbunny.net" && (url.encodedPath.startsWith("/private_files/") || url.encodedPath.startsWith("/private_thumbnails/")) && inkSid.isNotBlank())
-            url.newBuilder().setQueryParameter("sid", inkSid).build().toString() else raw
-    }
+    fun mediaUrl(raw: String): String = mediaSessionUrl(raw, inkSid)
     companion object {
         @Volatile private var instance: Accounts? = null
         fun get(context: Context): Accounts = instance ?: synchronized(this) {
@@ -122,3 +118,13 @@ class Accounts private constructor(context: Context) {
     }
 }
 private fun String.toHttpSegment() = java.net.URLEncoder.encode(this, "UTF-8").replace("+", "%20")
+
+fun stripSession(raw: String): String {
+    val url = runCatching { raw.toHttpUrl() }.getOrNull() ?: return raw
+    return url.newBuilder().removeAllQueryParameters("sid").build().toString()
+}
+fun mediaSessionUrl(raw: String, sid: String): String {
+    val url = runCatching { stripSession(raw).toHttpUrl() }.getOrNull() ?: return raw
+    val privateAsset = url.host == "inkbunny.net" && (url.encodedPath.startsWith("/private_files/") || url.encodedPath.startsWith("/private_thumbnails/"))
+    return if (privateAsset && sid.isNotBlank()) url.newBuilder().setQueryParameter("sid", sid).build().toString() else url.toString()
+}

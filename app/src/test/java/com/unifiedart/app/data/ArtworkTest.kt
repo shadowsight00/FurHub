@@ -32,6 +32,28 @@ class ArtworkTest {
         assertFalse(blacklisted(post.copy(source = Source.INKBUNNY), "wolf"))
     }
 
+    @Test fun sessionsAreOnlyAttachedToPrivateInkbunnyAssets() {
+        assertEquals("https://inkbunny.net/private_files/full/a.png?sid=new", mediaSessionUrl("https://inkbunny.net/private_files/full/a.png?sid=old", "new"))
+        assertEquals("https://inkbunny.net/files/a.png", mediaSessionUrl("https://inkbunny.net/files/a.png?sid=old", "new"))
+        assertEquals("https://example.com/private_files/a.png", mediaSessionUrl("https://example.com/private_files/a.png", "secret"))
+        assertEquals("https://inkbunny.net/private_files/a.png", mediaSessionUrl("https://inkbunny.net/private_files/a.png?sid=old", ""))
+    }
+
+    @Test fun cachedArtworkKeepsOrderAndMetadataButNeverSessionTokens() {
+        val source = art(Source.INKBUNNY, "8", 33).copy(files = listOf(MediaFile("https://inkbunny.net/private_files/full/a.png?sid=secret", "image/png")))
+        val json = source.toJson()
+        assertFalse(json.contains("secret"))
+        val cached = artworkFromJson(json)
+        assertEquals(source.key, cached.key)
+        assertEquals(source.uploadedAt, cached.uploadedAt)
+        assertEquals("https://inkbunny.net/private_files/full/a.png", cached.files.first().url)
+    }
+
+    @Test fun freshMetadataReplacesCachedMetadataForTheSameSourceId() {
+        val cached = art(Source.E621, "3", 10).copy(needsVerification = true)
+        assertFalse(mergeArtwork(listOf(cached), listOf(cached.copy(needsVerification = false))).single().needsVerification)
+    }
+
     @Test fun e621NullMediaNeverBecomesALiteralNullUrl() {
         val art = E621Source().parse(JSONObject("""{"id":8,"file":{"url":null},"preview":{"url":null},"tags":{"artist":["example"]},"pools":[1,2]}"""))
         assertTrue(art.files.isEmpty())

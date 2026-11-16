@@ -43,3 +43,13 @@ Reviewed official e621 server controllers for Users and Favorites and the client
 The Inkbunny documented `favs_user_id` search filter reads favorites. Registered sessions reuse SID without the guest-rating mutation. Invalid registered sessions report reconnect instead of falling back to guest. Registered logout calls the official logout endpoint and removes the encrypted local connection. Full account-block preference export and favorite mutations were not found in the reviewed API documentation; these are not claimed as supported.
 
 The e621 blacklist matcher handles AND lines, optional OR tokens, negation, comments, wildcard tags, rating/type/status, uploader IDs/names, pools, favorites and documented numeric comparisons/ranges. It only evaluates user-supplied account rules; no app-owned rating blacklist is installed.
+
+## Following, previews and local storage additions
+
+Inkbunny watchlist uses `api_watchlist.php` and its documented `watches` array. Following uses `unread_submissions=yes` without any unread mutation. View tracking is local. Inkbunny autocomplete uses `api_search_autosuggest.php`, `keyword`, the current account's `ratingsmask` (all supported ratings for the app's guest mode), and the documented `results[].value` response. e621 tag suggestions use the official Tags controller's `search[name_matches]` filter.
+
+Reviewed the official e621 Pool controller/model and Post `video_sample_list` implementation. Pool metadata returns `post_ids` in intended order. Gallery video previews use the smallest available `sample.alternates.samples` variant, never the original/alternate full video just to animate a thumbnail. Sources without a documented preview variant keep their thumbnail; this avoids fetching full-resolution media in the grid.
+
+All media tokens are stripped before metadata is cached. An Inkbunny SID is added at request time only for private assets on the exact official host, never arbitrary URLs or public CDN assets. Private assets are excluded from the image disk cache, and cache identities include the connected source account. Saved artwork requires live availability verification before media viewing. Eight JVM tests cover source identity/merging, timestamp offsets, blocked/multi-file normalization, blacklist expressions, token routing and cache serialization.
+
+Downloads use Android's persisted Storage Access Framework folder grant and WorkManager foreground tasks. Pool file fetches stage to one temporary file at a time; failed media never enters a ZIP as a partial entry. Archive-writing errors fail and clean up the entire archive; source failures are recorded in manifest entries. Real accounts, large media, device background policy, storage providers and release signing remain runtime-validation work.
