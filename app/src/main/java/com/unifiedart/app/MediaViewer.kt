@@ -147,6 +147,7 @@ private fun ZoomImage(art: Artwork, url: String) {
     }
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun Video(url: String, source: Source, active: Boolean) {
     val context = LocalContext.current
