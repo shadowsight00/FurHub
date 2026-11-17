@@ -79,13 +79,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             val scope = accounts.eId.ifBlank { "public" }
             val cached = database.dao().records("feed").filter { it.groupName == scope }.mapNotNull {
                 runCatching { artworkFromJson(it.payload).copy(needsVerification = true) }.getOrNull()
-            }.map { it.copy(blocked = blacklisted(it, accounts.eBlacklist)) }
+            }.map { if (it.source == Source.E621) it.copy(blocked = blacklisted(it, accounts.eBlacklist)) else it }
             if (generation == stamp) mutable.update { it.copy(items = mergeArtwork(cached, it.items)) }
         }
         loadNext()
     }
     fun refresh() {
-        if (mutable.value.query.mode == GalleryMode.LOCAL) mutable.update { state -> state.copy(items = state.items.map { it.copy(needsVerification = true, blocked = if (it.source == Source.E621) blacklisted(it, accounts.eBlacklist) else it.blocked) }) }
+        if (mutable.value.query.mode == GalleryMode.LOCAL) mutable.update { state -> state.copy(items = state.items.map { it.copy(needsVerification = true, blocked = if (it.source == Source.E621) blacklisted(it, accounts.eBlacklist) else it.blocked) }.filterNot { it.blocked }) }
         else search(mutable.value.query)
     }
     fun cancel() {
@@ -169,7 +169,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     suspend fun details(art: Artwork): Artwork {
         val detail = adapters.getValue(art.source).details(art)
         local.markViewed(art.key)
-        mutable.update { state -> state.copy(items = state.items.map { if (it.key == detail.key) detail else it }) }
+        mutable.update { state -> state.copy(items = state.items.map { if (it.key == detail.key) detail else it }.filterNot { it.blocked }) }
         return detail
     }
     fun toggleArtist(artist: String) {

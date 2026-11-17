@@ -69,4 +69,25 @@ class ArtworkTest {
         assertTrue(art.blocked)
         assertEquals("https://example.com/1.png", art.files.first().url)
     }
+
+    @Test fun inkbunnySearchUsesNoncustomThumbnailWhenCustomIsAbsent() {
+        val post = JSONObject("""{"submission_id":"9","thumbnail_url_large_noncustom":"https://nl1.ib.metapix.net/thumbnails/large/9.jpg"}""")
+        assertEquals("https://nl1.ib.metapix.net/thumbnails/large/9.jpg", InkbunnySource().parse(post).thumbnail)
+        post.put("thumbnail_url_large", "https://nl1.ib.metapix.net/thumbnails/large/custom.jpg")
+        assertEquals("https://nl1.ib.metapix.net/thumbnails/large/custom.jpg", InkbunnySource().parse(post).thumbnail)
+    }
+
+    @Test fun inkbunnyThumbnailFallsBackPastMissingNullAndEmptyFields() {
+        val post = JSONObject("""{"submission_id":"9","thumbnail_url_large":null,"thumbnail_url_large_noncustom":"","thumbnail_url_medium_noncustom":"https://inkbunny.net/private_thumbnails/medium/9.jpg?sid=secret"}""")
+        assertEquals("https://inkbunny.net/private_thumbnails/medium/9.jpg", InkbunnySource().parse(post).thumbnail)
+        assertEquals("", InkbunnySource().parse(JSONObject("""{"submission_id":"10"}""")).thumbnail)
+    }
+
+    @Test fun blockedArtworkIsRemovedFromBothSourcesAndCachedEntries() {
+        val allowed = art(Source.E621, "1", 1)
+        val blocked = art(Source.E621, "2", 2).copy(blocked = true)
+        val inkBlocked = art(Source.INKBUNNY, "3", 3).copy(blocked = true)
+        assertEquals(listOf(allowed), mergeArtwork(listOf(blocked, inkBlocked), listOf(allowed)))
+        assertTrue(mergeArtwork(listOf(allowed), listOf(allowed.copy(blocked = true))).isEmpty())
+    }
 }

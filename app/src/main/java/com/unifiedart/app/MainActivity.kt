@@ -59,7 +59,7 @@ fun imageRequest(context: android.content.Context, art: Artwork, url: String): I
         .memoryCacheKey("${art.key}:$scope:$url").diskCacheKey("${art.key}:$scope:$url")
         .diskCachePolicy(if (privateAsset) coil.request.CachePolicy.DISABLED else coil.request.CachePolicy.ENABLED)
         .addHeader("User-Agent", USER_AGENT)
-        .apply { if (art.source == Source.INKBUNNY) addHeader("Referer", "https://inkbunny.net") }
+        .apply { if (art.source == Source.INKBUNNY) addHeader("Referer", "https://inkbunny.net/") }
         .crossfade(true).build()
 }
 
@@ -133,7 +133,8 @@ private fun Gallery(model: GalleryViewModel = viewModel()) {
     }
     val nearEnd by remember { derivedStateOf {
         val last = grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-        state.items.isNotEmpty() && last >= state.items.size - 10
+        (state.items.isEmpty() || last >= state.items.size - 10) &&
+            state.sources.values.any { it.more && it.error == null }
     } }
     LaunchedEffect(nearEnd, state.items.size, state.loading) {
         if (nearEnd && !state.loading) model.loadNext()
@@ -241,7 +242,6 @@ private fun Gallery(model: GalleryViewModel = viewModel()) {
                         else selection = if (art.key in selection) selection - art.key else selection + art.key
                     }, onLongClick = { selection = if (art.key in selection) selection - art.key else selection + art.key })) {
                     if (art.needsVerification) Text("Saved artwork · tap to load", Modifier.padding(8.dp))
-                    else if (art.blocked) Text("Blocked by source preferences", modifier = Modifier.padding(8.dp))
                     else AnimatedThumbnail(art, art.key in activePreviews && selectedKey == null, autoplay && section < 3 && selectedKey == null)
                     if (art.key in selection) Text("✓", Modifier.align(Alignment.TopEnd).padding(8.dp), color = MaterialTheme.colorScheme.primary)
                     Surface(Modifier.align(Alignment.BottomStart), color = Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(4.dp)) {

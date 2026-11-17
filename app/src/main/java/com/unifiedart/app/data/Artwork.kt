@@ -29,4 +29,4 @@ data class SearchQuery(val e621: String = "", val inkbunny: String = "", val ink
 data class Page(val items: List<Artwork>, val more: Boolean, val resultId: String? = null)
 
 fun mergeArtwork(old: List<Artwork>, new: List<Artwork>): List<Artwork> =
-    (old + new).associateBy { it.key }.values.sortedWith(compareByDescending<Artwork> { it.uploadedAt }.thenBy { it.key })
+    (old + new).associateBy { it.key }.values.filterNot { it.blocked }.sortedWith(compareByDescending<Artwork> { it.uploadedAt }.thenBy { it.key })

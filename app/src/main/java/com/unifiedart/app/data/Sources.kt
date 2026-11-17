@@ -176,7 +176,7 @@ class InkbunnySource(private val api: ApiClient = ApiClients.inkbunny, private v
             listOfNotNull(post.optString("username").takeIf { it.isNotBlank() }),
             post.optJSONArray("keywords").objects().map { it.optString("keyword_name") },
             timestamp(post.optString("create_datetime")),
-            sequenceOf("thumbnail_url_large", "thumbnail_url_medium", "thumbnail_url_huge").map { post.https(it) }.firstOrNull { it.isNotEmpty() } ?: "",
+            inkbunnyThumbnail(post),
             files.ifEmpty { direct }, post.optInt("pagecount", files.size.coerceAtLeast(1)),
             post.truth("favorite"), post.optJSONArray("pools").objects().map { it.optString("pool_id") }, post.truth("hidden"), format = post.optString("mimetype").substringAfter('/'))
     }
@@ -194,3 +194,9 @@ suspend fun loadE621Post(id: String, accounts: Accounts): Artwork {
     val art = E621Source(accounts = accounts).parse(result.optJSONObject("post") ?: throw IOException("Post unavailable"))
     return art.copy(blocked = blacklisted(art, accounts.eBlacklist))
 }
+
+/** Inkbunny omits custom fields when only an original (noncustom) thumbnail exists. */
+internal fun inkbunnyThumbnail(post: JSONObject): String =
+    sequenceOf("large", "medium", "huge").flatMap { size ->
+        sequenceOf("thumbnail_url_$size", "thumbnail_url_${size}_noncustom")
+    }.map { post.https(it) }.firstOrNull { it.isNotEmpty() } ?: ""
