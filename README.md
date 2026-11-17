@@ -6,7 +6,7 @@ Native Kotlin / Compose Android art library combining e621 and Inkbunny. Artwork
 
 - Phase 1 passed cloud build, tests, lint and debug APK assembly: https://github.com/shadowsight00/UnifiedArt/actions/runs/43953549116
 - Phase 2 secure accounts/favorites passed cloud checks: https://github.com/shadowsight00/UnifiedArt/actions/runs/43955152082
-- Current 0.4 candidate includes the following/media/download/collections work below. Local compilation, eight JVM tests and lint pass. Consult the latest successful source-import workflow for its cloud artifact; do not confuse earlier checkpoint APKs with this version.
+- Current 0.4.3 candidate includes the following/media/download/collections work below. The video viewer uses a TextureView, visible-page player ownership, decoder fallback, guarded setup and in-app retry. Automated tests cover player view inflation and surface detachment/release, alongside artwork and filtering behavior. Consult the latest successful source-import workflow for its cloud artifact; do not confuse earlier checkpoint APKs with this version.
 
 ## Implemented candidate features
 
@@ -25,7 +25,7 @@ Native Kotlin / Compose Android art library combining e621 and Inkbunny. Artwork
 
 ## Install using only your phone
 
-Open the latest successful Actions run, download **UnifiedArt-debug-apk**, extract the ZIP and open `app-debug.apk`. Allow installation from the app used to open the APK if Android requests it. No computer, terminal, Android Studio or source-file uploads are required.
+Download the APK from [GitHub Releases](https://github.com/shadowsight00/UnifiedArt/releases). For unreleased builds, open the latest successful source-import Actions run, download **UnifiedArt-debug-apk**, extract the ZIP and open `app-debug.apk`. Allow installation from the app used to open the APK if Android requests it. No computer, terminal, Android Studio or source-file uploads are required.
 
 ## Validation and current limits
 

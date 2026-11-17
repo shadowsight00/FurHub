@@ -1,6 +1,5 @@
 package com.unifiedart.app
 
-import android.view.ViewGroup
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -21,17 +20,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.media3.common.MediaItem
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.ui.PlayerView
 import coil.ImageLoader
 import coil.compose.SubcomposeAsyncImage
 import coil.decode.ImageDecoderDecoder
@@ -100,7 +93,7 @@ fun MediaViewer(items: List<Artwork>, initial: Int, model: GalleryViewModel, onC
                                 !verified -> Text("Connect to the source to check media availability.", Modifier.padding(20.dp))
                                 art.blocked -> Text("This artwork is blocked by your source preferences.", Modifier.padding(20.dp))
                                 file == null && !loading -> Text("No media is available to this session.", Modifier.padding(20.dp))
-                                file?.video == true -> Video(file.url, art.source, active = pager.currentPage == index)
+                                file?.video == true -> VideoPlayer(file.url, art.source, active = pager.settledPage == index)
                                 file?.image == true -> ZoomImage(art, file.url)
                                 file != null -> Text("${file.label} playback isn't supported on this device.", Modifier.padding(20.dp))
                             }
@@ -210,34 +203,4 @@ private fun ZoomImage(art: Artwork, url: String) {
             loading = { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } },
             error = { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Image couldn't load. Reopen it to retry.") } })
     }
-}
-
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-@Composable
-private fun Video(url: String, source: Source, active: Boolean) {
-    val context = LocalContext.current
-    val mediaUrl = Accounts.get(context).mediaUrl(url)
-    val owner = LocalLifecycleOwner.current
-    val player = remember(mediaUrl) {
-        val http = DefaultHttpDataSource.Factory().setUserAgent(USER_AGENT).setDefaultRequestProperties(
-            if (source == Source.INKBUNNY) mapOf("Referer" to "https://inkbunny.net") else emptyMap())
-        ExoPlayer.Builder(context).setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(http)).build().apply {
-            setMediaItem(MediaItem.fromUri(mediaUrl)); prepare()
-        }
-    }
-    var failed by remember(url) { mutableStateOf(false) }
-    DisposableEffect(player, owner) {
-        val listener = object : androidx.media3.common.Player.Listener {
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) { failed = true }
-        }
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) player.pause()
-        }
-        player.addListener(listener); owner.lifecycle.addObserver(observer)
-        onDispose { owner.lifecycle.removeObserver(observer); player.removeListener(listener); player.release() }
-    }
-    LaunchedEffect(active) { if (!active) player.pause() }
-    if (failed) Text("This video couldn't play on this device.", Modifier.padding(20.dp))
-    else AndroidView(factory = { PlayerView(it).apply { this.player = player; layoutParams = ViewGroup.LayoutParams(-1, -1) } },
-        modifier = Modifier.fillMaxSize())
 }

@@ -11,8 +11,8 @@ android {
         applicationId = "com.unifiedart.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.4.2"
+        versionCode = 7
+        versionName = "0.4.3"
     }
     val signingPath = System.getenv("UNIFIEDART_KEYSTORE_PATH")
     if (!signingPath.isNullOrBlank()) {
@@ -24,6 +24,7 @@ android {
         }
         buildTypes.getByName("release").signingConfig = signingConfigs.getByName("secureRelease")
     }
+    testOptions { unitTests.isIncludeAndroidResources = true }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
@@ -45,11 +46,12 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-gif:2.7.0")
-    implementation("androidx.media3:media3-exoplayer:1.5.1")
-    implementation("androidx.media3:media3-ui:1.5.1")
+    implementation("androidx.media3:media3-exoplayer:1.8.1")
+    implementation("androidx.media3:media3-ui:1.8.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("org.json:json:20240303")
 }
