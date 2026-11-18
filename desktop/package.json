@@ -1,6 +1,6 @@
 {
   "name": "unifiedart-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "One unified e621 and Inkbunny art library for Windows",
   "author": "UnifiedArt contributors",
   "license": "UNLICENSED",
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.cjs",
-    "check": "node --check src/main.cjs && node --check src/services.cjs && node --check src/downloads.cjs && node --check src/ui.js",
+    "check": "node --check src/main.cjs && node --check src/services.cjs && node --check src/downloads.cjs && node --check src/ui.js && node --check src/media.cjs",
     "smoke": "electron . --smoke-test",
     "dist:win": "electron-builder --win nsis portable --x64 --publish never"
   },

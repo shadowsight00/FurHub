@@ -5,8 +5,8 @@ Standalone Windows 10/11 x64 desktop app. Electron supplies the desktop window a
 ## Download
 
 Get the Windows release from GitHub Releases:
-- `UnifiedArt-Windows-0.1.0-Setup.exe`: installer with a desktop shortcut.
-- `UnifiedArt-Windows-0.1.0-Portable.exe`: run without an installer.
+- `UnifiedArt-Windows-0.1.1-Setup.exe`: installer with a desktop shortcut.
+- `UnifiedArt-Windows-0.1.1-Portable.exe`: run without an installer.
 
 No Node.js, browser extension, or development tools are needed to use either build. The app is not code-signed, so Windows may display an unknown-publisher notice.
 
@@ -23,3 +23,5 @@ Inkbunny's API does not document adding/removing site favorites or exporting all
 ## Development
 
 `npm ci`, `npm test`, `npm run check`, `npm start`. `npm run dist:win` produces NSIS and portable x64 EXEs on the Windows CI runner. `npm run smoke` verifies startup, renderer sandboxing and the IPC boot contract without credentials. See the Windows workflow for cloud validation and packaging.
+
+Version 0.1.1 fixes full-size Inkbunny media loading by setting its required referrer through Electron’s media-session header hook. Header routing, private sessions, redirects, compressed responses and Chromium header delivery have regression coverage.
