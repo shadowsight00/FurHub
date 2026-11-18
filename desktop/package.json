@@ -1,0 +1,59 @@
+{
+  "name": "unifiedart-desktop",
+  "version": "0.1.0",
+  "description": "One unified e621 and Inkbunny art library for Windows",
+  "author": "UnifiedArt contributors",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.cjs",
+    "check": "node --check src/main.cjs && node --check src/services.cjs && node --check src/downloads.cjs && node --check src/ui.js",
+    "smoke": "electron . --smoke-test",
+    "dist:win": "electron-builder --win nsis portable --x64 --publish never"
+  },
+  "dependencies": {
+    "archiver": "8.0.0"
+  },
+  "devDependencies": {
+    "electron": "45.3.4",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.unifiedart.desktop",
+    "productName": "UnifiedArt",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "assets/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "UnifiedArt-Windows-${version}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "UnifiedArt-Windows-${version}-Portable.${ext}"
+    }
+  },
+  "overrides": {
+    "readdir-glob": {
+      "minimatch": "11.0.9"
+    }
+  }
+}
