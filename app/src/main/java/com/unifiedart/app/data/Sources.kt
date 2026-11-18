@@ -49,7 +49,8 @@ class E621Source(private val api: ApiClient = ApiClients.e621, private val accou
         }
         if (query.mode == GalleryMode.FAVORITES && accounts?.eId.isNullOrBlank()) return Page(emptyList(), false)
         val endpoint = if (query.mode == GalleryMode.FAVORITES) "https://e621.net/favorites.json" else "https://e621.net/posts.json"
-        val url = endpoint.toHttpUrl().newBuilder().apply {
+        // The post parser still reads the v1 file, sample, and tag fields.
+        val url = endpoint.toHttpUrl().newBuilder().addQueryParameter("v1", "true").apply {
             if (query.mode == GalleryMode.FAVORITES) addQueryParameter("user_id", accounts?.eId)
         }
             .addQueryParameter("tags", query.e621).addQueryParameter("limit", "40")
@@ -59,7 +60,7 @@ class E621Source(private val api: ApiClient = ApiClients.e621, private val accou
         return Page(posts.objects().map(::parse).map { it.copy(blocked = blacklisted(it, accounts?.eBlacklist.orEmpty())) }, posts.length() >= 40)
     }
     override suspend fun details(art: Artwork): Artwork {
-        val result = api.json("https://e621.net/posts/${art.id}.json", headers = accounts?.eHeaders().orEmpty())
+        val result = api.json("https://e621.net/posts/${art.id}.json?v1=true", headers = accounts?.eHeaders().orEmpty())
         val fresh = parse(result.optJSONObject("post") ?: throw IOException("Submission unavailable"))
         return fresh.copy(blocked = blacklisted(fresh, accounts?.eBlacklist.orEmpty()))
     }
@@ -190,7 +191,7 @@ suspend fun loadPool(id: String, accounts: Accounts): JSONObject {
 }
 suspend fun loadE621Post(id: String, accounts: Accounts): Artwork {
     require(id.matches(Regex("[0-9]+")))
-    val result = ApiClients.e621.json("https://e621.net/posts/$id.json", headers = accounts.eHeaders())
+    val result = ApiClients.e621.json("https://e621.net/posts/$id.json?v1=true", headers = accounts.eHeaders())
     val art = E621Source(accounts = accounts).parse(result.optJSONObject("post") ?: throw IOException("Post unavailable"))
     return art.copy(blocked = blacklisted(art, accounts.eBlacklist))
 }
