@@ -5,7 +5,6 @@ on:
     paths:
       - desktop-source.zip
       - desktop/**
-      - .github/workflows/windows.yml
   workflow_dispatch:
 permissions:
   contents: write
@@ -78,13 +77,13 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
       - uses: actions/upload-artifact@v4
         with:
-          name: UnifiedArt-Windows
+          name: FurHub-Windows
           path: desktop/dist/*.exe
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: UnifiedArt-Windows-smoke
+          name: FurHub-Windows-smoke
           path: desktop/test-output/
           if-no-files-found: ignore
       - name: Publish Windows desktop release
@@ -92,11 +91,13 @@ jobs:
         with:
           tag_name: ${{ steps.source.outputs.tag }}
           target_commitish: ${{ steps.source.outputs.sha }}
-          name: UnifiedArt for Windows ${{ steps.source.outputs.version }}
+          name: FurHub for Windows ${{ steps.source.outputs.version }}
           make_latest: true
           files: desktop/dist/*.exe
           fail_on_unmatched_files: true
           body: |
+            FurHub update: new fox-and-paw icon and name, stable gallery batches, reused thumbnail/video elements, faster repeat viewing with bounded session image caching and fresh account-scoped details, and collapsible source-specific tag searches.
+
             Standalone Windows 10/11 x64 desktop edition with one unified e621 + Inkbunny library.
 
             Download **Setup.exe** to install, or **Portable.exe** to run without an installer. No development tools are needed. These builds are unsigned, so Windows may show an unknown-publisher warning.
