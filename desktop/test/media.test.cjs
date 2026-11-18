@@ -21,3 +21,9 @@ test('redirects to unknown hosts are rejected before session data could leave',a
 test('header hook does not add Inkbunny headers to unrelated hosts',()=>{let result;inkbunnyHeaders({url:'https://example.com/a',requestHeaders:{Accept:'image/png'}},r=>{result=r;});assert.deepEqual(result.requestHeaders,{Accept:'image/png'});});
 test('compressed upstream lengths are not copied onto decoded image streams',async()=>{const r=mediaResponse({method:'GET'},new Response('decoded-image',{headers:{'content-type':'image/png','content-encoding':'gzip','content-length':'999'}}));assert.equal(r.headers.get('content-length'),null);assert.equal(await r.text(),'decoded-image');});
 test('image streams and video range headers survive the media proxy',async()=>{const r=mediaResponse({method:'GET'},new Response('abc',{status:206,headers:{'content-type':'video/webm','content-length':'3','content-range':'bytes 0-2/20','accept-ranges':'bytes'}}));assert.equal(r.status,206);assert.equal(r.headers.get('content-length'),'3');assert.equal(r.headers.get('content-range'),'bytes 0-2/20');assert.equal(await r.text(),'abc');});
+
+test('temporary CDN server failures are retried before returning media',async()=>{
+  let calls=0;const session={webRequest:{onBeforeSendHeaders(){}},fetch:async()=>++calls===1?new Response('temporary',{status:503}):new Response('image',{headers:{'content-type':'image/png'}})};
+  const fetch=createAssetFetcher(session,()=>'', 'test');const response=await fetch('inkbunny','https://nl1.ib.metapix.net/files/full/test.png');
+  assert.equal(calls,2);assert.equal(await response.text(),'image');
+});

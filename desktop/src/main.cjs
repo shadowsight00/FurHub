@@ -2,11 +2,14 @@
 const {app,BrowserWindow,ipcMain,protocol,net,session,safeStorage,dialog,Menu}=require('electron');
 const path=require('node:path');const fs=require('node:fs');const {randomUUID}=require('node:crypto');const {pathToFileURL}=require('node:url');
 const {Store,Vault}=require('./store.cjs');const {Services,UA}=require('./services.cjs');const {Downloads}=require('./downloads.cjs');
-const {createAssetFetcher,inkbunnyHeaders,mediaResponse}=require('./media.cjs');
+const {createAssetFetcher,inkbunnyHeaders,mediaResponse,ImageCache}=require('./media.cjs');
 const {asset,stripSession,trustedAsset,mediaSessionUrl,blacklisted,parseE,parseI}=require('./core.cjs');
 protocol.registerSchemesAsPrivileged([{scheme:'artmedia',privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true,corsEnabled:true}}]);
 const smoke=process.argv.includes('--smoke-test');if(smoke)app.setPath('userData',path.join(require('node:os').tmpdir(),'unifiedart-smoke-'+process.pid));
+const imageCache=new ImageCache();
 let win,store,vault,services,downloads,assetFetcher;const artwork=new Map(),assets=new Map(),assetKeys=new Map(),controllers=new Map();
+// Keep the existing Windows profile so the brand change preserves accounts and collections.
+if(!smoke&&app.isPackaged)app.setPath('userData',path.join(app.getPath('appData'),'UnifiedArt'));
 const uiURL=pathToFileURL(path.join(__dirname,'index.html')).href;
 function text(v,max=200){if(typeof v!=='string'||v.length>max)throw new Error('Invalid input');return v.trim();}
 function source(v){if(!['e621','inkbunny'].includes(v))throw new Error('Unknown source');return v;}
@@ -22,6 +25,8 @@ async function fetchAsset(source,raw,options={}){
     const start=match?Number(match[1]):0,end=match&&match[2]?Math.min(Number(match[2]),data.length-1):data.length-1;
     return new Response(data.subarray(start,end+1),{status:match?206:200,headers:{'content-type':video?'video/webm':'image/png','content-length':String(end-start+1),'accept-ranges':'bytes',...(match?{'content-range':`bytes ${start}-${end}/${data.length}`}:{})}});
   }
+  const key=`${source}:${vault.data[source]?.id||'guest'}:${source==='inkbunny'?(vault.data.inkbunny?.sid||services.guest):''}:${raw}`;
+  if((!options.method||options.method==='GET')&&!options.headers?.Range){const cached=imageCache.get(key);if(cached){if(smoke)console.log('MEDIA_CACHE_HIT '+source);return cached;}const remote=await assetFetcher(source,raw,options);void imageCache.remember(key,remote);return remote;}
   return assetFetcher(source,raw,options);
 }
 function records(){return store.data.records.map(r=>r.art?{...r,art:expose({...r.art,needsVerification:true})}:r).filter(r=>!r.art || !blacklisted(r.art,vault.data.e621?.blacklist));}
@@ -37,9 +42,10 @@ const handlers={
     return {...result,items:result.items.map(expose)};
   },
   cancelSearch:()=>{for(const c of controllers.values())c.abort();},
+  prepare:async p=>{const a=currentArtwork(p.key);await services.details(a.source,a.id);return true;},
   details:async p=>{const a=currentArtwork(p.key);const fresh=await services.details(a.source,a.id);store.data.viewed=[fresh.key,...store.data.viewed.filter(x=>x!==fresh.key)].slice(0,5000);store.save();return expose(fresh);},
-  connect:async p=>{await services.connect(source(p.source),p.name,p.secret);assets.clear();assetKeys.clear();return boot();},
-  disconnect:async p=>{await services.disconnect(source(p.source));assets.clear();assetKeys.clear();return boot();},
+  connect:async p=>{await services.connect(source(p.source),p.name,p.secret);assets.clear();assetKeys.clear();imageCache.clear();services.detailsCache.clear();return boot();},
+  disconnect:async p=>{await services.disconnect(source(p.source));assets.clear();assetKeys.clear();imageCache.clear();services.detailsCache.clear();return boot();},
   refreshBlacklist:async()=>{await services.refreshBlacklist();return boot();},
   favorite:async p=>{const a=currentArtwork(p.key);if(a.source!=='e621')throw new Error('Inkbunny site favorites are read-only through its API. Use a local bookmark.');await services.favorite(a.id,!!p.desired);a.favorite=!!p.desired;return expose(a);},
   suggestions:p=>services.suggestions(source(p.source),text(p.text,150)),
@@ -65,7 +71,7 @@ app.whenReady().then(async()=>{
   assetFetcher=createAssetFetcher(session.fromPartition('unifiedart-media'),()=>vault.data.inkbunny?.sid || services.guest,UA);
   if(smoke) {
     const first=parseE({id:1,title:'test',created_at:'2026-11-17T12:00:00Z',file:{url:'https://static1.e621.net/unifiedart-smoke.png',ext:'png',width:512,height:512},preview:{url:'https://static1.e621.net/unifiedart-smoke.png'},tags:{artist:['Desktop smoke test'],general:['test']}});
-    const second=parseI({submission_id:2,title:'Video playback smoke test',username:'Test artist',create_datetime:'2026-11-16 12:00:00+00:00',thumbnail_url_large_noncustom:'https://inkbunny.net/files/unifiedart-smoke.png',mimetype:'video/webm',file_url_full:'https://inkbunny.net/files/unifiedart-smoke.webm'});
+    const second=parseI({submission_id:2,keywords:[{keyword_name:'landscape'}],title:'Video playback smoke test',username:'Test artist',create_datetime:'2026-11-16 12:00:00+00:00',thumbnail_url_large_noncustom:'https://inkbunny.net/files/unifiedart-smoke.png',mimetype:'video/webm',file_url_full:'https://inkbunny.net/files/unifiedart-smoke.webm'});
     const fixture=[first,second];
     services.search=async source=>({items:fixture.filter(a=>a.source===source),more:false});
     services.details=async(source,id)=>fixture.find(a=>a.source===source && a.id===String(id));
@@ -86,13 +92,13 @@ app.whenReady().then(async()=>{
     if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error('Invalid request');
     try{return await handlers[method](payload);}catch(e){throw new Error(e.message || 'Operation failed. Please retry.');}
   });
-  win=new BrowserWindow({width:1420,height:940,minWidth:860,minHeight:620,backgroundColor:'#141419',title:'UnifiedArt',icon:path.join(__dirname,'../assets/icon.png'),
+  win=new BrowserWindow({width:1420,height:940,minWidth:860,minHeight:620,backgroundColor:'#141419',title:'FurHub',icon:path.join(__dirname,'../assets/icon.png'),
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',e=>e.preventDefault());
   win.webContents.session.setPermissionRequestHandler((_w,_p,callback)=>callback(false));
   win.webContents.session.setPermissionCheckHandler(()=>false);
   win.webContents.on('render-process-gone',()=>{if(!win.isDestroyed())win.reload();});
-  Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'UnifiedArt',submenu:[{role:'quit'}]},{label:'View',submenu:[{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{type:'separator'},{role:'togglefullscreen'}]}]));
+  Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'FurHub',submenu:[{role:'quit'}]},{label:'View',submenu:[{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{type:'separator'},{role:'togglefullscreen'}]}]));
   await win.loadURL(uiURL);
   if(smoke){try{
     const http=require('node:http');
@@ -111,7 +117,11 @@ app.whenReady().then(async()=>{
       if(!b.version||typeof require!=='undefined'||typeof process!=='undefined')throw new Error('Renderer isolation failed');
       await wait(()=>document.querySelectorAll('.tile').length===2);
       document.querySelector('.tile').click();
-      await wait(()=>document.querySelector('#media-stage img')?.naturalWidth>0);
+      await wait(()=>document.querySelector('#media-stage img:not(.viewer-preview)')?.naturalWidth>0);
+      const initialTile=document.querySelector('.tile');
+      document.querySelector('#viewer-close').click();await wait(()=>!document.querySelector('#viewer').open);
+      if(document.querySelector('.tile')!==initialTile)throw new Error('Grid media was recreated');
+      document.querySelector('.tile').click();await wait(()=>document.querySelector('#media-stage img:not(.viewer-preview)')?.naturalWidth>0);
       document.querySelector('#next-art').click();
       await wait(()=>document.querySelector('#media-stage video')?.readyState>=2);
       const video=document.querySelector('#media-stage video');video.muted=true;await video.play();
@@ -124,7 +134,18 @@ app.whenReady().then(async()=>{
         await new Promise(r=>setTimeout(r,40));
       }
       await wait(()=>document.querySelectorAll('.tile').length===2);
-      return {version:b.version,isolated:true,tabs:6,mergedGrid:true,imageLoaded:true,videoDecoded:true};
+      await wait(()=>document.querySelector('.brand-logo')?.naturalWidth>0);
+      if(!document.querySelector('.brand').textContent.includes('FurHub'))throw new Error('Brand header missing');
+      document.querySelector('.tile').click();await wait(()=>document.querySelector('#art-details .tag-section'));
+      document.querySelector('.tag-section summary').click();await wait(()=>document.querySelector('.tag-section').open);
+      document.querySelector('.tag-section .tag').click();await wait(()=>!document.querySelector('#viewer').open&&document.querySelectorAll('.tile').length===1);
+      if(document.querySelector('#i-query').value!=='')throw new Error('Tag search crossed sources');
+      document.querySelector('[data-tab=explore]').click();await wait(()=>document.querySelectorAll('.tile').length===2);
+      document.querySelectorAll('.tile')[1].click();await wait(()=>document.querySelector('#art-details .tag-section .tag'));
+      if(!document.querySelector('.tag-section').open)document.querySelector('.tag-section summary').click();document.querySelector('.tag-section .tag').click();
+      await wait(()=>!document.querySelector('#viewer').open&&document.querySelectorAll('.tile').length===1);
+      if(document.querySelector('#e-query').value!==''||document.querySelector('#i-query').value!=='landscape')throw new Error('Inkbunny tag routing failed');
+      return {version:b.version,isolated:true,tabs:6,mergedGrid:true,imageLoaded:true,videoDecoded:true,stableTiles:true,tagSearchBothSources:true};
     })()`);
     if(process.platform==='win32') {
       // A separate real guest session tests the live API -> full file -> protocol -> Chromium image path.
@@ -138,18 +159,30 @@ app.whenReady().then(async()=>{
         const detail=live.checkI(await live.request('inkbunny','/api_submissions.php',{sid,submission_ids:id}));
         const art=parseI(detail.submissions?.[0] || {});
         if(art.blocked||!art.files[0]?.url)throw new Error('Public test media unavailable');
-        const imageURL=proxy('inkbunny',art.files[0].url);
+        const imageURL=proxy('inkbunny',art.files[0].url);const started=Date.now();
         const dimensions=await win.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const img=new Image();const timer=setTimeout(()=>reject(new Error('Live image timeout')),30000);img.onload=()=>{clearTimeout(timer);resolve({width:img.naturalWidth,height:img.naturalHeight});};img.onerror=()=>{clearTimeout(timer);reject(new Error('Live Inkbunny image failed'));};img.src=${JSON.stringify(imageURL)};})`);
         if(!dimensions.width)throw new Error('Live image did not decode');
-        console.log('LIVE_INKBUNNY_IMAGE_OK '+JSON.stringify(dimensions));
+        console.log('LIVE_INKBUNNY_IMAGE_OK '+JSON.stringify({...dimensions,firstMs:Date.now()-started}));
+        const reopened=Date.now();const cached=await fetchAsset('inkbunny',art.files[0].url);await cached.arrayBuffer();console.log('LIVE_INKBUNNY_REOPEN_MS '+(Date.now()-reopened));
       } catch(error) {
         // External API outages cannot be fixed by packaging; synthetic network and renderer tests remain required.
         console.log('LIVE_INKBUNNY_IMAGE_UNAVAILABLE '+(error.message==='Live Inkbunny image failed'?'image fetch/decode failed':'public API or media unavailable'));
         if(error.message==='Live Inkbunny image failed')throw error;
       } finally {services.guest=previousGuest;if(sid)try{await live.request('inkbunny','/api_logout.php',{sid});}catch{}}
     }
+    if(process.platform==='win32') {
+      try {
+        const live=new Services((...args)=>net.fetch(...args),{data:{}},store);
+        const page=await live.request('e621','/posts.json',{tags:'landscape rating:s type:jpg',limit:1});
+        const art=parseE(page.posts?.[0]||{});if(!art.files[0]?.url)throw new Error('Public test image unavailable');
+        const url=proxy('e621',art.files[0].url),started=Date.now();
+        const dimensions=await win.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const img=new Image();const timer=setTimeout(()=>reject(new Error('Live image timeout')),30000);img.onload=()=>{clearTimeout(timer);resolve({width:img.naturalWidth,height:img.naturalHeight});};img.onerror=()=>{clearTimeout(timer);reject(new Error('Live e621 image failed'));};img.src=${JSON.stringify(url)};})`);
+        console.log('LIVE_E621_IMAGE_OK '+JSON.stringify({...dimensions,firstMs:Date.now()-started}));
+        const reopened=Date.now();const cached=await fetchAsset('e621',art.files[0].url);await cached.arrayBuffer();console.log('LIVE_E621_REOPEN_MS '+(Date.now()-reopened));
+      }catch(error){console.log('LIVE_E621_IMAGE_UNAVAILABLE');if(error.message==='Live e621 image failed')throw error;}
+    }
     console.log('SMOKE_OK '+JSON.stringify(result));await new Promise(r=>setTimeout(r,400));
     const image=await win.webContents.capturePage();fs.mkdirSync(path.join(__dirname,'../test-output'),{recursive:true});fs.writeFileSync(path.join(__dirname,'../test-output/desktop.png'),image.toPNG());app.exit(0);
   }catch{console.error('SMOKE_FAILED');app.exit(1);}}
-}).catch(()=>{console.error('UnifiedArt could not start.');app.exit(1);});
+}).catch(()=>{console.error('FurHub could not start.');app.exit(1);});
 app.on('window-all-closed',()=>{for(const c of controllers.values())c.abort();for(const c of downloads?.controllers.values() || [])c.abort();app.quit();});

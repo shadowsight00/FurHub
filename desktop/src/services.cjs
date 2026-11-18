@@ -1,6 +1,6 @@
 'use strict';
 const {parseE,parseI,mergeArtwork,blacklisted}=require('./core.cjs');
-const UA='UnifiedArt-Desktop/0.1.0 (https://github.com/shadowsight00/UnifiedArt)';
+const UA='FurHub-Desktop/0.2.0 (https://github.com/shadowsight00/FurHub)';
 const wait=(ms,signal)=>new Promise((resolve,reject)=>{
   if(signal?.aborted) return reject(new Error('Canceled'));
   const stop=()=>{clearTimeout(timer);reject(new Error('Canceled'));};
@@ -8,7 +8,9 @@ const wait=(ms,signal)=>new Promise((resolve,reject)=>{
   signal?.addEventListener('abort',stop,{once:true});
 });
 class Services {
-  constructor(fetch,vault,store) {this.fetch=fetch;this.vault=vault;this.store=store;this.guest='';this.guestTask=null;this.tails={};this.last={};}
+  constructor(fetch,vault,store) {this.fetch=fetch;this.vault=vault;this.store=store;this.guest='';this.guestTask=null;this.tails={};this.last={};this.detailsCache=new Map();this.detailTasks=new Map();}
+  detailKey(source,id){const a=this.vault.data[source];return `${source}:${a?.id||'guest'}:${a?.sid||''}:${a?.blacklist||''}:${id}`;}
+  rememberDetail(a,key=this.detailKey(a.source,a.id)){if(!a.blocked){this.detailsCache.delete(key);this.detailsCache.set(key,{art:a,expires:Date.now()+60000});while(this.detailsCache.size>160)this.detailsCache.delete(this.detailsCache.keys().next().value);}return a;}
   eHeaders() {const a=this.vault.data.e621;return a?{Authorization:'Basic '+Buffer.from(a.name+':'+a.key).toString('base64')}:{};}
   async request(source,path,params={},options={}) {
     const previous=this.tails[source] || Promise.resolve(); let unlock;
@@ -94,7 +96,7 @@ class Services {
       if(q.mode==='favorites') params.user_id=this.vault.data.e621.id;
       const r=await this.request(source,q.mode==='favorites'?'/favorites.json':'/posts.json',params,{signal});
       if(!Array.isArray(r.posts)) throw new Error('Unexpected e621 response.');
-      return {items:r.posts.map(parseE).filter(a=>!blacklisted(a,this.vault.data.e621?.blacklist)),more:r.posts.length>=40};
+      return {items:r.posts.map(parseE).map(a=>this.rememberDetail(a)).filter(a=>!blacklisted(a,this.vault.data.e621?.blacklist)),more:r.posts.length>=40};
     }
     if(source!=='inkbunny') throw new Error('Unknown source');
     if(q.mode!=='explore'&&!this.vault.data.inkbunny) return {items:[],more:false};
@@ -111,6 +113,13 @@ class Services {
     return {items:r.submissions.map(parseI).filter(a=>!a.blocked).map(a=>({...a,favorite:q.mode==='favorites'||a.favorite})),more:page<Number(r.pages_count),rid:r.rid || rid};
   }
   async details(source,id) {
+    const key=this.detailKey(source,id),cached=this.detailsCache.get(key);
+    if(cached&&cached.expires>Date.now()&&!blacklisted(cached.art,this.vault.data.e621?.blacklist))return {...cached.art};
+    if(this.detailTasks.has(key))return this.detailTasks.get(key);
+    const task=this.fetchDetails(source,id).then(a=>this.rememberDetail(a,key)).finally(()=>this.detailTasks.delete(key));
+    this.detailTasks.set(key,task);return task;
+  }
+  async fetchDetails(source,id) {
     if(!/^\d+$/.test(String(id))) throw new Error('Invalid submission ID');
     let a;
     if(source==='e621') {const r=await this.request(source,`/posts/${id}.json`);if(!r.post) throw new Error('Submission unavailable.');a=parseE(r.post);}

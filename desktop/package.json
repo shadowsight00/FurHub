@@ -1,15 +1,15 @@
 {
   "name": "unifiedart-desktop",
-  "version": "0.1.1",
-  "description": "One unified e621 and Inkbunny art library for Windows",
-  "author": "UnifiedArt contributors",
+  "version": "0.2.0",
+  "description": "FurHub \u2014 your furry art library",
+  "author": "FurHub contributors",
   "license": "UNLICENSED",
   "private": true,
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.cjs",
-    "check": "node --check src/main.cjs && node --check src/services.cjs && node --check src/downloads.cjs && node --check src/ui.js && node --check src/media.cjs",
+    "check": "node --check src/main.cjs && node --check src/services.cjs && node --check src/downloads.cjs && node --check src/ui.js && node --check src/media.cjs && node --check src/gallery.js",
     "smoke": "electron . --smoke-test",
     "dist:win": "electron-builder --win nsis portable --x64 --publish never"
   },
@@ -22,7 +22,7 @@
   },
   "build": {
     "appId": "com.unifiedart.desktop",
-    "productName": "UnifiedArt",
+    "productName": "FurHub",
     "directories": {
       "output": "dist"
     },
@@ -38,17 +38,17 @@
         "portable"
       ],
       "icon": "assets/icon.ico",
-      "signAndEditExecutable": false
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "artifactName": "UnifiedArt-Windows-${version}-Setup.${ext}"
+      "artifactName": "FurHub-Windows-${version}-Setup.${ext}"
     },
     "portable": {
-      "artifactName": "UnifiedArt-Windows-${version}-Portable.${ext}"
+      "artifactName": "FurHub-Windows-${version}-Portable.${ext}"
     }
   },
   "overrides": {

@@ -9,6 +9,7 @@ function inkbunnyHeaders(details,callback) {
   }
   callback({requestHeaders:headers});
 }
+function retryWait(ms,signal){return new Promise((resolve,reject)=>{if(signal?.aborted)return reject(new Error('Canceled'));const stop=()=>{clearTimeout(timer);reject(new Error('Canceled'));};const timer=setTimeout(()=>{signal?.removeEventListener('abort',stop);resolve();},ms);signal?.addEventListener('abort',stop,{once:true});});}
 function createAssetFetcher(session,getSid,userAgent) {
   // Chromium rejects Referer in fetch's headers. Set it in the supported session hook instead.
   session.webRequest.onBeforeSendHeaders(INKBUNNY_MEDIA,inkbunnyHeaders);
@@ -19,7 +20,15 @@ function createAssetFetcher(session,getSid,userAgent) {
     for(let hops=0;hops<4;hops++) {
       const headers={'User-Agent':userAgent};
       const range=options.headers?.Range;if(range)headers.Range=range;
-      const response=await session.fetch(url,{method:options.method || 'GET',headers,redirect:'manual',signal:options.signal});
+      let response;
+      for(let attempt=0;attempt<3;attempt++) {
+        try {
+          response=await session.fetch(url,{method:options.method || 'GET',headers,redirect:'manual',signal:options.signal});
+          if(![429,500,502,503,504].includes(response.status)||attempt===2)break;
+          const delay=Math.min(10000,Math.max(300*2**attempt,Number(response.headers.get('retry-after'))*1000||0));
+          await response.body?.cancel();await retryWait(delay,options.signal);
+        }catch(error){if(options.signal?.aborted||attempt===2)throw error;await retryWait(300*2**attempt,options.signal);}
+      }
       if([301,302,303,307,308].includes(response.status)) {
         const location=response.headers.get('location');
         await response.body?.cancel();
@@ -45,3 +54,22 @@ function mediaResponse(request,remote) {
   return new Response(request.method==='HEAD'?null:remote.body,{status:remote.status,headers});
 }
 module.exports={INKBUNNY_MEDIA,inkbunnyHeaders,createAssetFetcher,mediaResponse};
+
+// Session-local image bytes only: bounded, short-lived, and never persisted to disk.
+class ImageCache {
+  constructor(maxBytes=48*1024*1024,maxEntry=12*1024*1024,ttl=300000){this.maxBytes=maxBytes;this.maxEntry=maxEntry;this.ttl=ttl;this.bytes=0;this.entries=new Map();}
+  clear(){this.entries.clear();this.bytes=0;}
+  get(key){const hit=this.entries.get(key);if(!hit)return null;if(hit.expires<Date.now()){this.entries.delete(key);this.bytes-=hit.data.byteLength;return null;}this.entries.delete(key);this.entries.set(key,hit);return new Response(hit.data,{status:200,headers:hit.headers});}
+  async remember(key,response){
+    if(response.status!==200||!/^image\//i.test(response.headers.get('content-type')||'')||Number(response.headers.get('content-length'))>this.maxEntry)return;
+    const copy=response.clone(),reader=copy.body?.getReader();if(!reader)return;let size=0;const chunks=[];
+    try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>this.maxEntry){reader.cancel().catch(()=>{});return;}chunks.push(value);}
+      const data=new Uint8Array(size);let offset=0;for(const chunk of chunks){data.set(chunk,offset);offset+=chunk.byteLength;}
+      const headers=new Headers(response.headers);headers.delete('content-encoding');headers.set('content-length',String(size));
+      const previous=this.entries.get(key);if(previous)this.bytes-=previous.data.byteLength;
+      this.entries.delete(key);this.entries.set(key,{data,headers,expires:Date.now()+this.ttl});this.bytes+=size;
+      while(this.bytes>this.maxBytes){const oldest=this.entries.keys().next().value;this.bytes-=this.entries.get(oldest).data.byteLength;this.entries.delete(oldest);}
+    }catch{}finally{reader.releaseLock();}
+  }
+}
+module.exports.ImageCache=ImageCache;
