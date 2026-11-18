@@ -218,6 +218,10 @@ private fun Gallery(model: GalleryViewModel = viewModel()) {
             Text("${state.items.size} artworks · ${if (newestFirst) "newest" else "oldest"} loaded first", style = MaterialTheme.typography.labelSmall)
             if (state.query.inkArtist.isNotEmpty()) TextButton(onClick = { model.search(SearchQuery(eTags, iTags)) }) { Text("All artists") }
         }
+        val poolId = Regex("pool:([0-9]+)").matchEntire(state.query.e621.trim())?.groupValues?.get(1)
+        if (poolId != null && state.query.enabled == setOf(Source.E621)) {
+            TextButton(onClick = { model.queuePool(poolId) }) { Text("Download pool ZIP") }
+        }
         if (selection.isNotEmpty()) Row {
             TextButton(onClick = { state.items.filter { it.key in selection }.forEach { model.queueDownload(it) }; selection = emptySet() }) { Text("Download ${selection.size} selected") }
             TextButton(onClick = { selection = emptySet() }) { Text("Clear selection") }
@@ -302,5 +306,11 @@ private fun Gallery(model: GalleryViewModel = viewModel()) {
         iTags = if (art.source == Source.INKBUNNY) tag else ""
         section = 0
         model.search(SearchQuery(eTags, iTags, enabled = setOf(art.source)))
-    }, onPool = { id -> selectedKey = null; eTags = "pool:$id"; model.search(SearchQuery(e621 = eTags, enabled = setOf(Source.E621))) })
+    }, onPool = { id ->
+        selectedKey = null
+        section = 0
+        eTags = "pool:$id"
+        iTags = ""
+        model.search(SearchQuery(e621 = eTags, enabled = setOf(Source.E621)))
+    })
 }
