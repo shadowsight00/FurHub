@@ -1,0 +1,108 @@
+name: Build and release Windows desktop
+on:
+  push:
+    branches: [main]
+    paths:
+      - desktop-source.zip
+      - desktop/**
+      - .github/workflows/windows.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: unifiedart-windows
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import prepared desktop source
+        shell: python
+        run: |
+          from pathlib import Path, PurePosixPath
+          from zipfile import ZipFile
+          package = Path('desktop-source.zip')
+          if package.exists():
+              with ZipFile(package) as archive:
+                  entries = archive.infolist()
+                  assert len(entries) < 500 and sum(e.file_size for e in entries) < 20 * 1024 * 1024
+                  for entry in entries:
+                      path = PurePosixPath(entry.filename)
+                      assert not path.is_absolute() and '..' not in path.parts and path.parts[0] == 'desktop'
+                      assert not any(p in {'.git', '.github', 'node_modules', 'dist', 'test-output'} for p in path.parts)
+                      assert (entry.external_attr >> 16) & 0o170000 != 0o120000
+                  archive.extractall('.')
+              package.unlink()
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install pinned dependencies
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+      - name: Check syntax and regression tests
+        working-directory: desktop
+        run: |
+          npm run check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows app startup and sandbox smoke test
+        working-directory: desktop
+        run: npm run smoke
+      - name: Build Windows installer and portable EXE
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist:win
+      - name: Commit validated desktop source
+        id: source
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add desktop
+          if (Test-Path desktop-source.zip) { throw "Source archive was not consumed" }
+          git add -u
+          if (git diff --cached --name-only) {
+            git commit -m "Import validated Windows desktop source"
+            git push
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          "sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
+          $version = (Get-Content desktop/package.json | ConvertFrom-Json).version
+          "tag=windows-v$version" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UnifiedArt-Windows
+          path: desktop/dist/*.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: UnifiedArt-Windows-smoke
+          path: desktop/test-output/
+          if-no-files-found: ignore
+      - name: Publish Windows desktop release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.source.outputs.tag }}
+          target_commitish: ${{ steps.source.outputs.sha }}
+          name: UnifiedArt for Windows ${{ steps.source.outputs.version }}
+          make_latest: true
+          files: desktop/dist/*.exe
+          fail_on_unmatched_files: true
+          body: |
+            Standalone Windows 10/11 x64 desktop edition with one unified e621 + Inkbunny library.
+
+            Download **Setup.exe** to install, or **Portable.exe** to run without an installer. No development tools are needed. These builds are unsigned, so Windows may show an unknown-publisher warning.
+
+            Includes unified browsing/search, account connections encrypted for your Windows user, favorites, following, blacklist filtering, Inkbunny thumbnails, in-app image/GIF/video viewing, artists/tags/pools, bookmarks, collections, saved searches, and original/batch/pool-ZIP downloads.
+
+            Inkbunny site favorites are read-only through its documented API. Following refresh is manual; downloads run while the app remains open. Android accounts and collections do not automatically sync. Authenticated account behavior and all media codecs still need real-user validation.
+
+            Built and startup-tested on a Windows GitHub Actions runner; parser, blacklist, session-routing, service-contract, and filesystem/download regression tests pass.
