@@ -56,7 +56,8 @@ fun MediaViewer(items: List<Artwork>, initial: Int, model: GalleryViewModel, onC
                     var retry by remember(original.key) { mutableIntStateOf(0) }
                     var fileIndex by remember(original.key) { mutableIntStateOf(0) }
                     var poolInfo by remember { mutableStateOf<org.json.JSONObject?>(null) }
-                    var info by remember(original.key) { mutableStateOf(false) }
+                    var showTags by remember(original.key) { mutableStateOf(false) }
+                    var showPools by remember(original.key) { mutableStateOf(false) }
                     var chooseCollection by remember { mutableStateOf(false) }
                     var actionBusy by remember(original.key) { mutableStateOf(false) }
                     val scope = rememberCoroutineScope()
@@ -77,8 +78,64 @@ fun MediaViewer(items: List<Artwork>, initial: Int, model: GalleryViewModel, onC
                         }, confirmButton = { TextButton(onClick = { poolInfo = null; onPool(pool.optString("id")) }) { Text("Browse pool") } },
                             dismissButton = { TextButton(onClick = { model.queuePool(pool.optString("id")); poolInfo = null }) { Text("Download ZIP") } })
                     }
+                    if (showTags) AlertDialog(
+                        onDismissRequest = { showTags = false },
+                        title = { Text("${art.source.label} tags") },
+                        text = {
+                            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                                val tags = art.tags.filter { it.isNotBlank() }.distinct().sorted()
+                                if (tags.isEmpty()) Text(if (loading) "Loading tags…" else "No tags available.")
+                                tags.forEach { tag ->
+                                    TextButton(onClick = { showTags = false; onTag(art, tag) }) { Text(tag) }
+                                }
+                                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                                Text(art.submissionUrl, style = MaterialTheme.typography.bodySmall)
+                                Text("${art.source.label} #${art.id}", style = MaterialTheme.typography.labelLarge)
+                                if (art.uploadedAt != 0L) Text(DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm z").withZone(ZoneId.systemDefault()).format(Instant.ofEpochSecond(art.uploadedAt)))
+                                art.files.getOrNull(fileIndex)?.let { Text("${it.label} · ${it.width} × ${it.height}") }
+                                art.artists.forEach { artist ->
+                                    TextButton(onClick = { onArtist(art, artist) }) { Text("Browse artist: $artist") }
+                                    TextButton(onClick = { model.saveArtist(art.source, artist) }) { Text("Save favorite artist") }
+                                    if (art.source == Source.E621) {
+                                        val followed by model.local.artists.collectAsState()
+                                        TextButton(onClick = { model.toggleArtist(artist) }) { Text(if (artist in followed) "Unfollow $artist" else "Follow $artist") }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = { TextButton(onClick = { showTags = false }) { Text("Close") } }
+                    )
+                    if (showPools) AlertDialog(
+                        onDismissRequest = { showPools = false },
+                        title = { Text("e621 pools") },
+                        text = {
+                            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                                art.pools.distinct().forEach { pool ->
+                                    Text("Pool #$pool", style = MaterialTheme.typography.titleSmall)
+                                    TextButton(onClick = { showPools = false; onPool(pool) }) { Text("View pool") }
+                                    TextButton(onClick = { model.queuePool(pool); showPools = false }) { Text("Download pool ZIP") }
+                                    TextButton(onClick = { model.savePool(pool) }) { Text("Save pool") }
+                                    TextButton(onClick = {
+                                        showPools = false
+                                        scope.launch {
+                                            try { poolInfo = loadPool(pool, model.accounts) }
+                                            catch (cancel: CancellationException) { throw cancel }
+                                            catch (_: Exception) { error = "Couldn't load pool information" }
+                                        }
+                                    }) { Text("Pool information") }
+                                }
+                            }
+                        },
+                        confirmButton = { TextButton(onClick = { showPools = false }) { Text("Close") } }
+                    )
                     Column(Modifier.fillMaxSize()) {
                         Text("${art.source.label} · ${art.title}", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.titleMedium)
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                            TextButton(onClick = { showTags = true }, enabled = !art.blocked) { Text("Show tags") }
+                            if (art.source == Source.E621 && art.pools.isNotEmpty() && !art.blocked) {
+                                TextButton(onClick = { showPools = true }) { Text(if (art.pools.size == 1) "Pool" else "Pools") }
+                            }
+                        }
                         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                         error?.let { message ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -141,27 +198,7 @@ fun MediaViewer(items: List<Artwork>, initial: Int, model: GalleryViewModel, onC
                                 }
                             }, confirmButton = { TextButton(onClick = { model.createCollection(name.trim()); model.saveArt(art, name.trim()); chooseCollection = false }, enabled = name.isNotBlank()) { Text("Create & save") } })
                         }
-                        TextButton(onClick = { info = !info }, modifier = Modifier.fillMaxWidth()) { Text(if (info) "Hide tags & details" else "Show tags & details (${art.tags.size})") }
-                        if (info) Column(Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()).padding(12.dp)) {
-                            Text(art.submissionUrl, style = MaterialTheme.typography.bodySmall)
-                            Text("${art.source.label} #${art.id}", style = MaterialTheme.typography.labelLarge)
-                            if (art.uploadedAt != 0L) Text(DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm z").withZone(ZoneId.systemDefault()).format(Instant.ofEpochSecond(art.uploadedAt)))
-                            art.files.getOrNull(fileIndex)?.let { Text("${it.label} · ${it.width} × ${it.height}") }
-                            art.artists.forEach { artist ->
-                                TextButton(onClick = { onArtist(art, artist) }) { Text("Browse artist: $artist") }
-                                TextButton(onClick = { model.saveArtist(art.source, artist) }) { Text("Save favorite artist") }
-                                if (art.source == Source.E621) {
-                                    val followed by model.local.artists.collectAsState()
-                                    TextButton(onClick = { model.toggleArtist(artist) }) { Text(if (artist in followed) "Unfollow $artist" else "Follow $artist") }
-                                }
-                            }
-                            if (art.source == Source.E621) art.pools.forEach { pool -> TextButton(onClick = { onPool(pool) }) { Text("Browse pool #$pool") }; TextButton(onClick = { model.savePool(pool) }) { Text("Save pool #$pool") }; TextButton(onClick = { scope.launch {
-                                try { poolInfo = loadPool(pool, model.accounts) }
-                                catch (cancel: CancellationException) { throw cancel }
-                                catch (_: Exception) { error = "Couldn't load pool information" }
-                            } }) { Text("Pool information") }; TextButton(onClick = { model.queuePool(pool) }) { Text("Download pool ZIP") } }
-                            art.tags.forEach { tag -> TextButton(onClick = { onTag(art, tag) }, contentPadding = PaddingValues(2.dp)) { Text(tag) } }
-                        }
+
                     }
                 }
             }
