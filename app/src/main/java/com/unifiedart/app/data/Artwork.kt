@@ -30,3 +30,11 @@ data class Page(val items: List<Artwork>, val more: Boolean, val resultId: Strin
 
 fun mergeArtwork(old: List<Artwork>, new: List<Artwork>): List<Artwork> =
     (old + new).associateBy { it.key }.values.filterNot { it.blocked }.sortedWith(compareByDescending<Artwork> { it.uploadedAt }.thenBy { it.key })
+
+/** Keep already displayed slots fixed; only the newly settled batch is sorted. */
+fun appendArtworkBatch(old: List<Artwork>, fresh: List<Artwork>): List<Artwork> {
+    val updates = fresh.associateBy { it.key }
+    val existing = old.map { it.key }.toSet()
+    return old.map { updates[it.key] ?: it }.filterNot { it.blocked } +
+        mergeArtwork(emptyList(), fresh.filterNot { it.key in existing })
+}

@@ -7,6 +7,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -28,7 +30,7 @@ data class GalleryState(val query: SearchQuery = SearchQuery(), val items: List<
     val loading get() = sources.values.any { it.loading }
 }
 
-/** Each source publishes as soon as it finishes. Failure never discards the other source's results. */
+/** Publish both source pages together; keep existing slots stable during pagination. */
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
     val accounts = Accounts.get(application)
     val local = LocalState(application)
@@ -106,20 +108,26 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         if (eligible.isEmpty()) return
         mutable.update { it.copy(sources = it.sources.mapValues { (source, value) -> if (source in eligible) value.copy(loading = true) else value }) }
         job = viewModelScope.launch {
-            supervisorScope {
-                eligible.forEach { source -> launch {
+            val results = supervisorScope {
+                eligible.map { source -> async {
                     val cursor = snapshot.sources.getValue(source)
                     try {
                         val page = adapters.getValue(source).search(snapshot.query, cursor.page, cursor.resultId)
-                        if (generation == current) mutable.update { state -> state.copy(
-                            items = mergeArtwork(state.items, page.items), sources = state.sources +
-                                (source to SourceState(cursor.page + 1, page.more, resultId = page.resultId))) }
+                        Triple(source, page, null as String?)
                     } catch (cancel: CancellationException) { throw cancel }
-                    catch (error: Exception) {
-                        if (generation == current) mutable.update { it.copy(sources = it.sources +
-                            (source to cursor.copy(error = error.message ?: "Connection failed", loading = false))) }
-                    }
-                } }
+                    catch (error: Exception) { Triple(source, null, error.message ?: "Connection failed") }
+                } }.awaitAll()
+            }
+            if (generation == current) {
+                val fresh = results.flatMap { it.second?.items.orEmpty() }
+                fresh.filter { it.source == Source.E621 && !it.needsVerification }.forEach { cacheDetail(it) }
+                mutable.update { state -> state.copy(
+                    items = appendArtworkBatch(state.items, fresh),
+                    sources = state.sources + results.associate { (source, page, error) ->
+                        val cursor = snapshot.sources.getValue(source)
+                        source to if (page != null) SourceState(cursor.page + 1, page.more, resultId = page.resultId)
+                            else cursor.copy(error = error, loading = false)
+                    }) }
             }
         }
     }
@@ -166,8 +174,17 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 sources = Source.entries.associateWith { SourceState(more = false) }, started = true)
         }
     }
+    private val detailCache = linkedMapOf<String, Pair<Long, Artwork>>()
+    private fun detailKey(art: Artwork) = "${art.key}:${accounts.eId}:${accounts.inkId}:${accounts.inkSid}:${accounts.eBlacklist}"
+    private fun cacheDetail(art: Artwork) {
+        if (!art.blocked) {
+            detailCache[detailKey(art)] = System.currentTimeMillis() + 60_000 to art
+            while (detailCache.size > 160) detailCache.remove(detailCache.keys.first())
+        }
+    }
     suspend fun details(art: Artwork): Artwork {
-        val detail = adapters.getValue(art.source).details(art)
+        val cached = detailCache[detailKey(art)]?.takeIf { it.first > System.currentTimeMillis() }?.second
+        val detail = cached ?: adapters.getValue(art.source).details(art).also { cacheDetail(it) }
         local.markViewed(art.key)
         mutable.update { state -> state.copy(items = state.items.map { if (it.key == detail.key) detail else it }.filterNot { it.blocked }) }
         return detail
@@ -179,7 +196,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     suspend fun favorite(art: Artwork, desired: Boolean) {
         if (art.source == Source.INKBUNNY) throw IllegalStateException("Inkbunny's documented API supports reading favorites, but doesn't document adding/removing them. Local bookmarks are planned separately.")
         mutable.update { s -> s.copy(items = s.items.map { if (it.key == art.key) it.copy(favorite = desired) else it }) }
-        try { e621.favorite(art, desired) }
+        try { e621.favorite(art, desired); cacheDetail(art.copy(favorite = desired)) }
         catch (error: Exception) {
             mutable.update { s -> s.copy(items = s.items.map { if (it.key == art.key) it.copy(favorite = art.favorite) else it }) }
             throw error

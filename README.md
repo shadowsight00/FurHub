@@ -1,11 +1,27 @@
-# UnifiedArt
+# FurHub
 
-Native Kotlin / Compose Android art library combining e621 and Inkbunny. Artwork and artist/tag/pool browsing stay in the app; no website redirects.
+<img src="app/src/main/res/drawable-nodpi/furhub_icon.png" width="144" alt="FurHub fox and paw logo">
+
+Your furry art library for Android and Windows, combining e621 and Inkbunny in one app.
+
+Download the Android APK or Windows installer/portable executable from [GitHub Releases](https://github.com/shadowsight00/FurHub/releases).
+
+## Latest update
+
+- New FurHub name and fox-and-paw app icon.
+- Both source pages publish as one settled batch. New pages append without shifting already displayed artwork.
+- Windows preserves existing thumbnail/video elements during gallery updates, caches recently opened image bytes in bounded session memory, and reuses fresh account-scoped details.
+- Android reuses fresh details, starts e621 images immediately, and decodes to the screen size until you zoom.
+- Collapsible tags search the source of the viewed artwork. Image and video files keep their original resolution and downloads.
+
+Network transfers finish at different times; tiles keep their places while media loads. No source preferences are bypassed.
+
+Existing app identifiers and the Windows profile folder remain unchanged so updates retain accounts, collections and preferences.
 
 ## Build checkpoints
 
-- Phase 1 passed cloud build, tests, lint and debug APK assembly: https://github.com/shadowsight00/UnifiedArt/actions/runs/43953549116
-- Phase 2 secure accounts/favorites passed cloud checks: https://github.com/shadowsight00/UnifiedArt/actions/runs/43955152082
+- Phase 1 passed cloud build, tests, lint and debug APK assembly: https://github.com/shadowsight00/FurHub/actions/runs/43953549116
+- Phase 2 secure accounts/favorites passed cloud checks: https://github.com/shadowsight00/FurHub/actions/runs/43955152082
 - Current 0.4.3 candidate includes the following/media/download/collections work below. The video viewer uses a TextureView, visible-page player ownership, decoder fallback, guarded setup and in-app retry. Automated tests cover player view inflation and surface detachment/release, alongside artwork and filtering behavior. Consult the latest successful source-import workflow for its cloud artifact; do not confuse earlier checkpoint APKs with this version.
 
 ## Implemented candidate features
@@ -25,7 +41,7 @@ Native Kotlin / Compose Android art library combining e621 and Inkbunny. Artwork
 
 ## Install using only your phone
 
-Download the APK from [GitHub Releases](https://github.com/shadowsight00/UnifiedArt/releases). For unreleased builds, open the latest successful source-import Actions run, download **UnifiedArt-debug-apk**, extract the ZIP and open `app-debug.apk`. Allow installation from the app used to open the APK if Android requests it. No computer, terminal, Android Studio or source-file uploads are required.
+Download the APK from [GitHub Releases](https://github.com/shadowsight00/FurHub/releases). For unreleased builds, open the latest successful source-import Actions run, download **FurHub-debug-apk**, extract the ZIP and open `app-debug.apk`. Allow installation from the app used to open the APK if Android requests it. No computer, terminal, Android Studio or source-file uploads are required.
 
 ## Validation and current limits
 

@@ -51,8 +51,8 @@ fun MediaViewer(items: List<Artwork>, initial: Int, model: GalleryViewModel, onC
                     val original = items[index]
                     var art by remember(original.key) { mutableStateOf(original) }
                     var error by remember(original.key) { mutableStateOf<String?>(null) }
-                    var loading by remember(original.key) { mutableStateOf(true) }
-                    var verified by remember(original.key) { mutableStateOf(false) }
+                    var loading by remember(original.key) { mutableStateOf(original.needsVerification || original.source != Source.E621) }
+                    var verified by remember(original.key) { mutableStateOf(!original.needsVerification && original.source == Source.E621 && !original.blocked) }
                     var retry by remember(original.key) { mutableIntStateOf(0) }
                     var fileIndex by remember(original.key) { mutableIntStateOf(0) }
                     var poolInfo by remember { mutableStateOf<org.json.JSONObject?>(null) }
@@ -62,7 +62,7 @@ fun MediaViewer(items: List<Artwork>, initial: Int, model: GalleryViewModel, onC
                     val scope = rememberCoroutineScope()
                     val libraryRecords by model.records.collectAsState()
                     LaunchedEffect(original.key, retry) {
-                        loading = true; error = null
+                        loading = !verified; error = null
                         try { art = model.details(original); verified = true }
                         catch (cancel: CancellationException) { throw cancel }
                         catch (_: Exception) { error = "Couldn't load this submission. It may be unavailable to this session." }
@@ -89,7 +89,7 @@ fun MediaViewer(items: List<Artwork>, initial: Int, model: GalleryViewModel, onC
                         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                             val file = art.files.getOrNull(fileIndex)
                             when {
-                                loading -> CircularProgressIndicator()
+                                loading && !verified -> CircularProgressIndicator()
                                 !verified -> Text("Connect to the source to check media availability.", Modifier.padding(20.dp))
                                 art.blocked -> Text("This artwork is blocked by your source preferences.", Modifier.padding(20.dp))
                                 file == null && !loading -> Text("No media is available to this session.", Modifier.padding(20.dp))
@@ -141,7 +141,7 @@ fun MediaViewer(items: List<Artwork>, initial: Int, model: GalleryViewModel, onC
                                 }
                             }, confirmButton = { TextButton(onClick = { model.createCollection(name.trim()); model.saveArt(art, name.trim()); chooseCollection = false }, enabled = name.isNotBlank()) { Text("Create & save") } })
                         }
-                        TextButton(onClick = { info = !info }, modifier = Modifier.fillMaxWidth()) { Text(if (info) "Hide details" else "Artists, tags & details") }
+                        TextButton(onClick = { info = !info }, modifier = Modifier.fillMaxWidth()) { Text(if (info) "Hide tags & details" else "Show tags & details (${art.tags.size})") }
                         if (info) Column(Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()).padding(12.dp)) {
                             Text(art.submissionUrl, style = MaterialTheme.typography.bodySmall)
                             Text("${art.source.label} #${art.id}", style = MaterialTheme.typography.labelLarge)
@@ -179,7 +179,7 @@ private fun ZoomImage(art: Artwork, url: String) {
         val density = androidx.compose.ui.platform.LocalDensity.current
         val maxX = with(density) { maxWidth.toPx() }
         val maxY = with(density) { maxHeight.toPx() }
-        SubcomposeAsyncImage(imageRequest(context, art, url).newBuilder().size(coil.size.Size.ORIGINAL).build(), art.title, imageLoader = loader,
+        SubcomposeAsyncImage(imageRequest(context, art, url).newBuilder().size(if (scale > 1.5f) coil.size.Size.ORIGINAL else coil.size.Size(maxX.toInt().coerceAtLeast(1), maxY.toInt().coerceAtLeast(1))).placeholderMemoryCacheKey("${art.key}:${if (art.source == Source.E621) Accounts.get(context).eId.ifBlank { "public" } else Accounts.get(context).inkId.ifBlank { "guest" }}:${art.thumbnail}").build(), art.title, imageLoader = loader,
             contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()
                 .pointerInput(url) { detectTapGestures(onDoubleTap = { scale = if (scale > 1f) 1f else 3f; offset = Offset.Zero }) }
                 // At 1x a single-finger drag belongs to the submission pager.

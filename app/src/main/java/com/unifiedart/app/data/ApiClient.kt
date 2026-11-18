@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-const val USER_AGENT = "UnifiedArt/0.4 (Android; https://github.com/shadowsight00/UnifiedArt)"
+const val USER_AGENT = "FurHub/0.5 (Android; https://github.com/shadowsight00/FurHub)"
 
 class ApiException(val code: Int, message: String) : IOException(message)
 

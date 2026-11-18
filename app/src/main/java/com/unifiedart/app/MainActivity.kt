@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.focus.onFocusChanged
@@ -141,8 +143,9 @@ private fun Gallery(model: GalleryViewModel = viewModel()) {
     }
     Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 10.dp)) {
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Image(painterResource(R.drawable.furhub_icon), "FurHub fox logo", Modifier.size(42.dp).padding(end = 6.dp))
             Column(Modifier.weight(1f)) {
-                Text("UnifiedArt", style = MaterialTheme.typography.headlineSmall)
+                Text("FurHub", style = MaterialTheme.typography.headlineSmall)
                 Text("One library. Two sources.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Hide search" else "Search") }
@@ -295,7 +298,9 @@ private fun Gallery(model: GalleryViewModel = viewModel()) {
         else { eTags = artist; iTags = ""; model.search(SearchQuery(inkArtist = artist, enabled = setOf(Source.INKBUNNY))) }
     }, onTag = { art, tag ->
         selectedKey = null
-        if (art.source == Source.E621) eTags = tag else iTags = tag
-        model.search(SearchQuery(eTags, iTags))
+        eTags = if (art.source == Source.E621) tag else ""
+        iTags = if (art.source == Source.INKBUNNY) tag else ""
+        section = 0
+        model.search(SearchQuery(eTags, iTags, enabled = setOf(art.source)))
     }, onPool = { id -> selectedKey = null; eTags = "pool:$id"; model.search(SearchQuery(e621 = eTags, enabled = setOf(Source.E621))) })
 }

@@ -13,6 +13,14 @@ class ArtworkTest {
         assertEquals(listOf(second, first), mergeArtwork(listOf(first), listOf(second, first)))
     }
 
+    @Test fun laterBatchesDoNotInsertAboveExistingArtwork() {
+        val first = art(Source.E621, "1", 10)
+        val late = art(Source.INKBUNNY, "2", 20)
+        assertEquals(listOf(first, late), appendArtworkBatch(listOf(first), listOf(late)))
+        assertEquals(listOf(late, first), appendArtworkBatch(emptyList(), listOf(first, late)))
+        assertEquals(listOf(late), appendArtworkBatch(listOf(first, late), listOf(first.copy(blocked = true))))
+    }
+
     @Test fun inkbunnyAndIsoOffsetsRepresentSameMoment() {
         val expected = timestamp("2026-11-16T15:00:00Z")
         assertTrue(expected > 0)
