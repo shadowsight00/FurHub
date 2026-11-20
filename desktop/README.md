@@ -5,8 +5,8 @@ Standalone Windows 10/11 x64 desktop app. Electron supplies the desktop window a
 ## Download
 
 Get the Windows release from GitHub Releases:
-- `FurHub-Windows-0.2.0-Setup.exe`: installer with a desktop shortcut.
-- `FurHub-Windows-0.2.0-Portable.exe`: run without an installer.
+- `FurHub-Windows-0.2.1-Setup.exe`: installer with a desktop shortcut.
+- `FurHub-Windows-0.2.1-Portable.exe`: run without an installer.
 
 No Node.js, browser extension, or development tools are needed to use either build. The app is not code-signed, so Windows may display an unknown-publisher notice.
 
@@ -24,6 +24,8 @@ Inkbunny's API does not document adding/removing site favorites or exporting all
 
 `npm ci`, `npm test`, `npm run check`, `npm start`. `npm run dist:win` produces NSIS and portable x64 EXEs on the Windows CI runner. `npm run smoke` verifies startup, renderer sandboxing and the IPC boot contract without credentials. See the Windows workflow for cloud validation and packaging.
 
-Version 0.2.0 fixes full-size Inkbunny media loading by setting its required referrer through Electron’s media-session header hook. Header routing, private sessions, redirects, compressed responses and Chromium header delivery have regression coverage.
+Version 0.2.1 fixes full-size Inkbunny media loading by setting its required referrer through Electron’s media-session header hook. Header routing, private sessions, redirects, compressed responses and Chromium header delivery have regression coverage.
 
-FurHub 0.2.0 keeps gallery slots stable and preserves media elements while paging. Recently opened images are cached only in bounded session memory (48 MiB total, 12 MiB per image, five-minute lifetime), scoped to the account/session and cleared on account changes. Fresh metadata is reused for one minute. Tags collapse and search only their source. The legacy Windows profile path and app ID remain for update compatibility.
+FurHub 0.2.1 keeps gallery slots stable and preserves media elements while paging. Recently opened images are cached only in bounded session memory (48 MiB total, 12 MiB per image, five-minute lifetime), scoped to the account/session and cleared on account changes. Fresh metadata is reused for one minute. Tags collapse and search only their source. The legacy Windows profile path and app ID remain for update compatibility.
+
+0.2.1 fixes desktop e621 searches/details after the API response-format change by requesting the supported v1 post fields. Inkbunny originals now use Electron ClientRequest redirect events so each redirect can be validated before it is followed. A real Chromium loopback test requires a private-file redirect to decode in the viewer and verifies that SID stays on private official URLs.

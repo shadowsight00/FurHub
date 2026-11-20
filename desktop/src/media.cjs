@@ -10,7 +10,31 @@ function inkbunnyHeaders(details,callback) {
   callback({requestHeaders:headers});
 }
 function retryWait(ms,signal){return new Promise((resolve,reject)=>{if(signal?.aborted)return reject(new Error('Canceled'));const stop=()=>{clearTimeout(timer);reject(new Error('Canceled'));};const timer=setTimeout(()=>{signal?.removeEventListener('abort',stop);resolve();},ms);signal?.addEventListener('abort',stop,{once:true});});}
-function createAssetFetcher(session,getSid,userAgent) {
+// net.fetch cancels manual redirects in Electron; ClientRequest exposes the target first.
+function createRedirectTransport(net,session) {
+  const {Readable}=require('node:stream');
+  return (url,options={})=>new Promise((resolve,reject)=>{
+    if(options.signal?.aborted)return reject(new Error('Canceled'));
+    const request=net.request({url,session,method:options.method||'GET',headers:options.headers||{},redirect:'manual',credentials:'omit'});
+    const abort=()=>request.abort();options.signal?.addEventListener('abort',abort,{once:true});
+    request.on('close',()=>options.signal?.removeEventListener('abort',abort));
+    request.on('error',reject);
+    request.on('abort',()=>reject(new Error('Canceled')));
+    request.on('redirect',(status,method,target)=>{
+      // Expose only the destination to the allowlist/SID loop, never follow automatically.
+      resolve(new Response(null,{status,headers:{location:target}}));request.abort();
+    });
+    request.on('response',incoming=>{
+      const headers=new Headers();for(const [key,value] of Object.entries(incoming.headers))if(value!==undefined)headers.set(key,Array.isArray(value)?value.join(', '):value);
+      try{const noBody=options.method==='HEAD'||[204,205,304].includes(incoming.statusCode);
+        resolve(new Response(noBody?null:Readable.toWeb(incoming),{status:incoming.statusCode,headers}));
+        if(noBody)incoming.resume();
+      }catch(error){request.abort();reject(error);}
+    });
+    request.end();
+  });
+}
+function createAssetFetcher(session,getSid,userAgent,transport=(url,options)=>session.fetch(url,options)) {
   // Chromium rejects Referer in fetch's headers. Set it in the supported session hook instead.
   session.webRequest.onBeforeSendHeaders(INKBUNNY_MEDIA,inkbunnyHeaders);
   return async function fetchAsset(source,raw,options={}) {
@@ -23,7 +47,7 @@ function createAssetFetcher(session,getSid,userAgent) {
       let response;
       for(let attempt=0;attempt<3;attempt++) {
         try {
-          response=await session.fetch(url,{method:options.method || 'GET',headers,redirect:'manual',signal:options.signal});
+          response=await transport(url,{method:options.method || 'GET',headers,redirect:'manual',signal:options.signal});
           if(![429,500,502,503,504].includes(response.status)||attempt===2)break;
           const delay=Math.min(10000,Math.max(300*2**attempt,Number(response.headers.get('retry-after'))*1000||0));
           await response.body?.cancel();await retryWait(delay,options.signal);
@@ -53,7 +77,7 @@ function mediaResponse(request,remote) {
   if((!encoding||encoding==='identity')&&remote.headers.has('content-length'))headers.set('content-length',remote.headers.get('content-length'));
   return new Response(request.method==='HEAD'?null:remote.body,{status:remote.status,headers});
 }
-module.exports={INKBUNNY_MEDIA,inkbunnyHeaders,createAssetFetcher,mediaResponse};
+module.exports={createRedirectTransport,INKBUNNY_MEDIA,inkbunnyHeaders,createAssetFetcher,mediaResponse};
 
 // Session-local image bytes only: bounded, short-lived, and never persisted to disk.
 class ImageCache {

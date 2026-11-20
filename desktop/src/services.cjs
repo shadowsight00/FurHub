@@ -1,6 +1,6 @@
 'use strict';
 const {parseE,parseI,mergeArtwork,blacklisted}=require('./core.cjs');
-const UA='FurHub-Desktop/0.2.0 (https://github.com/shadowsight00/FurHub)';
+const UA='FurHub-Desktop/0.2.1 (https://github.com/shadowsight00/FurHub)';
 const wait=(ms,signal)=>new Promise((resolve,reject)=>{
   if(signal?.aborted) return reject(new Error('Canceled'));
   const stop=()=>{clearTimeout(timer);reject(new Error('Canceled'));};
@@ -92,7 +92,7 @@ class Services {
         return {items:mergeArtwork([],pages.flatMap(x=>x.items),this.vault.data.e621?.blacklist),more:pages.some(x=>x.more)};
       }
       if(q.mode==='favorites'&&!this.vault.data.e621) return {items:[],more:false};
-      const params={tags:String(q.e621 || '').slice(0,2000),limit:40,page};
+      const params={v1:true,tags:String(q.e621 || '').slice(0,2000),limit:40,page};
       if(q.mode==='favorites') params.user_id=this.vault.data.e621.id;
       const r=await this.request(source,q.mode==='favorites'?'/favorites.json':'/posts.json',params,{signal});
       if(!Array.isArray(r.posts)) throw new Error('Unexpected e621 response.');
@@ -122,7 +122,7 @@ class Services {
   async fetchDetails(source,id) {
     if(!/^\d+$/.test(String(id))) throw new Error('Invalid submission ID');
     let a;
-    if(source==='e621') {const r=await this.request(source,`/posts/${id}.json`);if(!r.post) throw new Error('Submission unavailable.');a=parseE(r.post);}
+    if(source==='e621') {const r=await this.request(source,`/posts/${id}.json`,{v1:true});if(!r.post) throw new Error('Submission unavailable.');a=parseE(r.post);}
     else {const r=await this.ink('/api_submissions.php',{submission_ids:id,show_pools:'yes'});if(!r.submissions?.[0]) throw new Error('Submission unavailable to this session.');a=parseI(r.submissions[0]);}
     if(blacklisted(a,this.vault.data.e621?.blacklist)) throw new Error('This artwork is blocked by your source preferences.');
     return a;

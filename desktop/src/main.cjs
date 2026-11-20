@@ -2,7 +2,7 @@
 const {app,BrowserWindow,ipcMain,protocol,net,session,safeStorage,dialog,Menu}=require('electron');
 const path=require('node:path');const fs=require('node:fs');const {randomUUID}=require('node:crypto');const {pathToFileURL}=require('node:url');
 const {Store,Vault}=require('./store.cjs');const {Services,UA}=require('./services.cjs');const {Downloads}=require('./downloads.cjs');
-const {createAssetFetcher,inkbunnyHeaders,mediaResponse,ImageCache}=require('./media.cjs');
+const {createAssetFetcher,createRedirectTransport,inkbunnyHeaders,mediaResponse,ImageCache}=require('./media.cjs');
 const {asset,stripSession,trustedAsset,mediaSessionUrl,blacklisted,parseE,parseI}=require('./core.cjs');
 protocol.registerSchemesAsPrivileged([{scheme:'artmedia',privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true,corsEnabled:true}}]);
 const smoke=process.argv.includes('--smoke-test');if(smoke)app.setPath('userData',path.join(require('node:os').tmpdir(),'unifiedart-smoke-'+process.pid));
@@ -68,7 +68,8 @@ const handlers={
 };
 app.whenReady().then(async()=>{
   store=new Store(app.getPath('userData'));vault=new Vault(app.getPath('userData'),safeStorage);await vault.load();services=new Services((...args)=>net.fetch(...args),vault,store);
-  assetFetcher=createAssetFetcher(session.fromPartition('unifiedart-media'),()=>vault.data.inkbunny?.sid || services.guest,UA);
+  const mediaSession=session.fromPartition('unifiedart-media');
+  assetFetcher=createAssetFetcher(mediaSession,()=>vault.data.inkbunny?.sid || services.guest,UA,createRedirectTransport(net,mediaSession));
   if(smoke) {
     const first=parseE({id:1,title:'test',created_at:'2026-11-17T12:00:00Z',file:{url:'https://static1.e621.net/unifiedart-smoke.png',ext:'png',width:512,height:512},preview:{url:'https://static1.e621.net/unifiedart-smoke.png'},tags:{artist:['Desktop smoke test'],general:['test']}});
     const second=parseI({submission_id:2,keywords:[{keyword_name:'landscape'}],title:'Video playback smoke test',username:'Test artist',create_datetime:'2026-11-16 12:00:00+00:00',thumbnail_url_large_noncustom:'https://inkbunny.net/files/unifiedart-smoke.png',mimetype:'video/webm',file_url_full:'https://inkbunny.net/files/unifiedart-smoke.webm'});
@@ -111,6 +112,31 @@ app.whenReady().then(async()=>{
       if(echoed.referer!=='https://inkbunny.net/')throw new Error('Inkbunny media referrer was not sent');
       console.log('MEDIA_HEADER_OK');
     } finally {server.close();}
+    // Required real Chromium test: a private original redirects to a public CDN.
+    // Only network destinations are mapped to loopback; production routing and protocol run unchanged.
+    const redirectSession=session.fromPartition('unifiedart-redirect-smoke');
+    const transport=createRedirectTransport(net,redirectSession);let privateSeen=false,publicSeen=false;
+    const redirectServer=http.createServer((req,res)=>{
+      const url=new URL(req.url,'http://localhost');
+      if(req.headers.referer!=='https://inkbunny.net/'){res.writeHead(403);res.end();return;}
+      if(url.pathname==='/private_files/full/redirect-check.png'){
+        privateSeen=url.searchParams.get('sid')==='probe-session';
+        res.writeHead(302,{Location:'https://nl1.ib.metapix.net/files/redirect-check.png'});res.end();
+      }else if(url.pathname==='/files/redirect-check.png'){
+        publicSeen=!url.searchParams.has('sid');res.setHeader('Content-Type','image/png');res.end(fs.readFileSync(path.join(__dirname,'../assets/icon.png')));
+      }else{res.writeHead(404);res.end();}
+    });
+    await new Promise(resolve=>redirectServer.listen(0,'127.0.0.1',resolve));
+    const savedFetcher=assetFetcher;
+    try {
+      const origin='http://127.0.0.1:'+redirectServer.address().port;
+      assetFetcher=createAssetFetcher(redirectSession,()=> 'probe-session',UA,(url,options)=>{const parsed=new URL(url);return transport(origin+parsed.pathname+parsed.search,options);});
+      redirectSession.webRequest.onBeforeSendHeaders({urls:['http://127.0.0.1/*']},(details,callback)=>{const parsed=new URL(details.url);inkbunnyHeaders({...details,url:'https://inkbunny.net'+parsed.pathname},callback);});
+      const url=proxy('inkbunny','https://inkbunny.net/private_files/full/redirect-check.png');
+      const dimensions=await win.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const img=new Image();const timer=setTimeout(()=>reject(new Error('Redirect image timed out')),10000);img.onload=()=>{clearTimeout(timer);resolve(img.naturalWidth);};img.onerror=()=>{clearTimeout(timer);reject(new Error('Redirected image failed'));};img.src=${JSON.stringify(url)};})`);
+      if(!dimensions||!privateSeen||!publicSeen)throw new Error('Redirect/session regression');
+      console.log('PRIVATE_REDIRECT_IMAGE_OK '+JSON.stringify({decoded:true,privateSession:true,publicSessionRemoved:true}));
+    } finally {assetFetcher=savedFetcher;redirectServer.close();imageCache.clear();}
     const result=await win.webContents.executeJavaScript(`(async()=>{
       const wait=async test=>{for(let n=0;n<250;n++){if(test())return;await new Promise(r=>setTimeout(r,20));}throw new Error('UI test timed out');};
       const b=await window.unifiedart.call('boot');
@@ -173,8 +199,8 @@ app.whenReady().then(async()=>{
     if(process.platform==='win32') {
       try {
         const live=new Services((...args)=>net.fetch(...args),{data:{}},store);
-        const page=await live.request('e621','/posts.json',{tags:'landscape rating:s type:jpg',limit:1});
-        const art=parseE(page.posts?.[0]||{});if(!art.files[0]?.url)throw new Error('Public test image unavailable');
+        const page=await live.search('e621',{mode:'explore',e621:'landscape rating:s type:jpg'},1);
+        const art=page.items[0]||{};console.log('LIVE_E621_SEARCH_OK '+page.items.length);if(!art.files?.[0]?.url)throw new Error('Public test image unavailable');
         const url=proxy('e621',art.files[0].url),started=Date.now();
         const dimensions=await win.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const img=new Image();const timer=setTimeout(()=>reject(new Error('Live image timeout')),30000);img.onload=()=>{clearTimeout(timer);resolve({width:img.naturalWidth,height:img.naturalHeight});};img.onerror=()=>{clearTimeout(timer);reject(new Error('Live e621 image failed'));};img.src=${JSON.stringify(url)};})`);
         console.log('LIVE_E621_IMAGE_OK '+JSON.stringify({...dimensions,firstMs:Date.now()-started}));
@@ -183,6 +209,6 @@ app.whenReady().then(async()=>{
     }
     console.log('SMOKE_OK '+JSON.stringify(result));await new Promise(r=>setTimeout(r,400));
     const image=await win.webContents.capturePage();fs.mkdirSync(path.join(__dirname,'../test-output'),{recursive:true});fs.writeFileSync(path.join(__dirname,'../test-output/desktop.png'),image.toPNG());app.exit(0);
-  }catch{console.error('SMOKE_FAILED');app.exit(1);}}
+  }catch(error){console.error('SMOKE_FAILED '+error.name+': '+String(error.message).replace(/https?:[^\s]+/g,'[redacted address]'));app.exit(1);}}
 }).catch(()=>{console.error('FurHub could not start.');app.exit(1);});
 app.on('window-all-closed',()=>{for(const c of controllers.values())c.abort();for(const c of downloads?.controllers.values() || [])c.abort();app.quit();});

@@ -9,3 +9,14 @@ test('e621 verified login requires private blacklist response',async()=>{const {
 test('following feed splits e621 artist OR groups and merges identities',async()=>{const {s,store,calls}=harness();store.data.follows=['a','b','c','d','e'];s.reply={posts:[{id:3,file:{},tags:{}}]};const r=await s.search('e621',{mode:'following'},1);assert.equal(calls.length,2);assert.equal(calls[0].params.tags,'~a ~b ~c ~d');assert.equal(r.items.length,1);});
 
 test('successful empty API responses do not turn unfavorite into an error',async()=>{const s=new Services(async()=>new Response(null,{status:204}),{data:{e621:{id:'1',name:'name',key:'key'}}},{data:{follows:[]}});assert.deepEqual(await s.favorite('5',false),{});});
+
+test('desktop e621 search, favorites, following and details explicitly request legacy post format',async()=>{
+  for(const mode of ['explore','favorites','following']) {
+    const {s,vault,store,calls}=harness();vault.data.e621={id:'4'};store.data.follows=['artist'];
+    s.reply={posts:[{id:3,file:{url:'https://static1.e621.net/a.jpg',ext:'jpg'},tags:{general:['landscape']}}]};
+    const page=await s.search('e621',{mode,e621:'landscape'},1);
+    assert.equal(calls[0].params.v1,true);assert.equal(page.items[0].files[0].type,'jpg');assert(page.items[0].tags.includes('landscape'));
+  }
+  const {s,calls}=harness();s.reply={post:{id:8,file:{},tags:{}}};await s.details('e621',8);assert.equal(calls[0].params.v1,true);
+});
+test('empty legacy e621 search is valid and unexpected formats remain actionable errors',async()=>{const {s}=harness();s.reply={posts:[]};assert.deepEqual((await s.search('e621',{mode:'explore'},1)).items,[]);s.reply={unexpected:true};await assert.rejects(()=>s.search('e621',{mode:'explore'},1),/Unexpected e621 response/);});
